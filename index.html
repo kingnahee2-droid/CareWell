@@ -1,0 +1,2814 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ชื่นใจ - แอปสุขภาพสำหรับผู้สูงอายุ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap');
+
+        body {
+            font-family: 'Nunito', 'Sarabun', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+            font-optical-sizing: auto;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .elderly-app {
+            font-family: 'Nunito', 'Sarabun', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+            font-feature-settings: 'kern' 1, 'liga' 1;
+            
+            /* Soft pastel colors for wellness */
+            --wellness-bg: #f0f8ff;
+            --wellness-primary: #4a90e2;
+            --wellness-secondary: #81c784;
+            --wellness-accent: #fff3e0;
+            --wellness-success: #66bb6a;
+            --wellness-warning: #ffb74d;
+            --wellness-danger: #ef5350;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Prevent zoom on iOS when focusing inputs */
+        input[type="text"],
+        input[type="tel"],
+        input[type="number"],
+        textarea,
+        select {
+            font-size: max(16px, 1rem) !important;
+            -webkit-appearance: none;
+            border-radius: 8px;
+        }
+
+        /* Mobile-friendly button sizing */
+        button {
+            min-height: 44px;
+            min-width: 44px;
+            touch-action: manipulation;
+        }
+
+        /* Animation utilities */
+        .animate-in {
+            animation: slideInFromBottom 0.3s ease-out;
+        }
+
+        .slide-in-from-bottom-4 {
+            animation: slideInFromBottom 0.3s ease-out;
+        }
+
+        @keyframes slideInFromBottom {
+            from { transform: translateY(16px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .slide-in-from-top-4 {
+            animation: slideInFromTop 0.3s ease-out;
+        }
+
+        @keyframes slideInFromTop {
+            from { transform: translateY(-16px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .active\:scale-95:active {
+            transform: scale(0.95);
+        }
+
+        .active\:scale-98:active {
+            transform: scale(0.98);
+        }
+
+        .duration-300 {
+            transition-duration: 300ms;
+        }
+
+        .duration-200 {
+            transition-duration: 200ms;
+        }
+
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+        }
+
+        .transition-transform {
+            transition-property: transform;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+        }
+
+        .hidden { display: none !important; }
+
+        .min-touch-target {
+            min-height: 44px;
+            min-width: 44px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen bg-[#f0f8ff] elderly-app">
+        <div class="w-full max-w-md mx-auto bg-white min-h-screen relative">
+            <div class="w-full h-full overflow-y-auto" id="screen-container">
+                <!-- Screens will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Application State
+        let appState = {
+            isAuthenticated: false,
+            currentScreen: 'login',
+            userInfo: {
+                name: '',
+                phone: '',
+                registrationDate: null
+            },
+            userMode: 'elderly',
+            showNotification: false,
+            notificationType: 'exercise',
+            notificationSettings: {
+                exercise: true,
+                checkup: true
+            },
+            currentManualType: 'getting-started',
+            exerciseRecords: [],
+            showExerciseSuccess: false,
+            showUrgentMessage: true,
+            urgentMessageDismissed: false,
+            selectedContact: null,
+            selectedContactId: '',
+            groupMessage: '',
+            // Exercise Screen specific state
+            currentExercise: null,
+            isPlaying: false,
+            currentTime: 0,
+            isCompleted: false,
+            showFatigueSelection: false,
+            exerciseData: null,
+            // Health Screen specific state
+            healthView: 'main',
+            // Login state
+            loginData: {
+                name: '',
+                phone: '',
+                otp: '',
+                generatedOTP: '',
+                step: 'info' // 'info' | 'otp' | 'complete'
+            }
+        };
+
+        // Check for saved session on app start
+        function checkSavedSession() {
+            const savedUser = localStorage.getItem('userSession');
+            if (savedUser) {
+                try {
+                    const userData = JSON.parse(savedUser);
+                    appState.isAuthenticated = true;
+                    appState.userInfo = userData;
+                    appState.currentScreen = 'userSelection';
+                    return true;
+                } catch (e) {
+                    localStorage.removeItem('userSession');
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        // Save user session
+        function saveUserSession(userInfo) {
+            localStorage.setItem('userSession', JSON.stringify(userInfo));
+        }
+
+        // Clear user session
+        function clearUserSession() {
+            localStorage.removeItem('userSession');
+            appState.isAuthenticated = false;
+            appState.userInfo = { name: '', phone: '', registrationDate: null };
+            appState.currentScreen = 'login';
+        }
+
+        // Exercise data
+        const exercises = [
+            {
+                id: 'chair',
+                title: 'ท่าออกกำลังกายด้วยการนั่งบนเก้าอี้',
+                subtitle: '5-10 นาที',
+                icon: '🪑',
+                difficulty: 'ง่าย',
+                color: '#81c784',
+                duration: 5 * 60
+            },
+            {
+                id: 'standing',
+                title: 'ออกกำลังกายท่ายืน',
+                subtitle: '10-15 นาที', 
+                icon: '🧍',
+                difficulty: 'ปานกลาง',
+                color: '#4a90e2',
+                duration: 10 * 60
+            },
+            {
+                id: 'stretching',
+                title: 'การยืดคลายเส้น',
+                subtitle: '5-10 นาที',
+                icon: '🧘',
+                difficulty: 'ง่าย',
+                color: '#ff9800',
+                duration: 5 * 60
+            },
+            {
+                id: 'test',
+                title: 'Test 10 วินาที',
+                subtitle: 'ทดสอบระบบ',
+                icon: '⏱️',
+                difficulty: 'ทดสอบ',
+                color: '#9c27b0',
+                duration: 10
+            }
+        ];
+
+        // Family members data
+        const familyMembers = [
+            { 
+                id: 'anita',
+                name: 'อนิตา', 
+                phone: '089-xxx-xxxx', 
+                avatar: '👩', 
+                online: true,
+                unreadCount: 2,
+                lastMessage: 'แม่สบายดีมั้ยคะ วันนี้อากาศร้อน',
+                lastMessageTime: '09:30'
+            },
+            { 
+                id: 'somchai',
+                name: 'สมชาย', 
+                phone: '081-xxx-xxxx', 
+                avatar: '👨', 
+                online: true,
+                unreadCount: 1,
+                lastMessage: 'วันเสาร์ผมจะไปหาแม่นะครับ',
+                lastMessageTime: '10:35'
+            },
+            { 
+                id: 'nongpui',
+                name: 'น้องปุ๋ย', 
+                phone: '098-xxx-xxxx', 
+                avatar: '👧', 
+                online: false,
+                lastMessage: 'คิดถึงย่านะคะ ❤️',
+                lastMessageTime: 'เมื่อวาน'
+            },
+        ];
+
+        // Icon components
+        const Icons = {
+            ArrowLeft: `<svg viewBox="0 0 24 24" class="w-6 h-6"><path d="M19 12H5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12 19L5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+            Play: `<svg viewBox="0 0 24 24" class="w-8 h-8"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>`,
+            Pause: `<svg viewBox="0 0 24 24" class="w-8 h-8"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`,
+            CheckCircle: `<svg viewBox="0 0 24 24" class="w-16 h-16"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><polyline points="22,4 12,14.01 9,11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+            Volume2: `<svg viewBox="0 0 24 24" class="w-6 h-6"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19" fill="currentColor"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+            User: `<svg viewBox="0 0 24 24" class="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+            Users: `<svg viewBox="0 0 24 24" class="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+            Clock: `<svg viewBox="0 0 24 24" class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`,
+            X: `<svg viewBox="0 0 24 24" class="w-5 h-5 sm:w-4 sm:h-4 text-[#666]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>`,
+            Phone: `<svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,
+            Video: `<svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23,7 16,12 23,17"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+            MessageCircle: `<svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
+            Heart: `<svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
+            Activity: `<svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>`,
+            Bell: `<svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+            Calendar: `<svg viewBox="0 0 24 24" class="w-8 h-8 text-[#81c784]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+            AlertTriangle: `<svg viewBox="0 0 24 24" class="w-6 h-6 text-[#ffb74d]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="m12 17 .01 0"/></svg>`,
+            ExerciseIcon: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <circle cx="32" cy="16" r="6" fill="currentColor"/>
+                <path d="M32 24 L32 42" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+                <path d="M25 30 L32 26 L39 30" stroke="currentColor" stroke-width="4" stroke-linecap="round" fill="none"/>
+                <path d="M32 42 L26 52 M32 42 L38 48" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+                <path d="M20 32 L22 30 M18 36 L20 34 M46 28 L48 26 M44 32 L46 30" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+            </svg>`,
+            HealthIcon: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <rect x="10" y="14" width="44" height="42" rx="6" fill="currentColor" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+                <rect x="12" y="18" width="40" height="36" fill="white" rx="4" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+                <rect x="17" y="6" width="6" height="16" rx="3" fill="currentColor" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+                <rect x="41" y="6" width="6" height="16" rx="3" fill="currentColor" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+                <circle cx="20" cy="10" r="1.5" fill="rgba(255,255,255,0.6)"/>
+                <circle cx="20" cy="15" r="1.5" fill="rgba(255,255,255,0.6)"/>
+                <circle cx="44" cy="10" r="1.5" fill="rgba(255,255,255,0.6)"/>
+                <circle cx="44" cy="15" r="1.5" fill="rgba(255,255,255,0.6)"/>
+                <rect x="12" y="18" width="40" height="10" fill="currentColor" rx="4 4 0 0" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                <circle cx="32" cy="46" r="4.5" fill="#ff6b9d" stroke="white" stroke-width="2"/>
+                <text x="32" y="48.5" text-anchor="middle" font-size="4" fill="white" font-weight="bold">15</text>
+                <g transform="translate(32, 23)">
+                    <circle cx="0" cy="0" r="2.5" fill="white" opacity="0.9"/>
+                    <path d="M-1.5 0 L1.5 0 M0 -1.5 L0 1.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+                </g>
+            </svg>`,
+            FamilyIcon: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <rect x="18" y="10" width="28" height="44" rx="6" fill="currentColor" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+                <rect x="20" y="14" width="24" height="36" fill="white" rx="4" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+                <rect x="26" y="16" width="12" height="2" rx="1" fill="#ddd"/>
+                <rect x="26" y="19" width="12" height="1" rx="0.5" fill="#eee"/>
+                <rect x="22" y="22" width="20" height="24" fill="#f8f9fa" rx="2" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
+                <circle cx="32" cy="52" r="1.5" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.4)" stroke-width="0.5"/>
+            </svg>`,
+            HeartIcon: `<svg viewBox="0 0 64 64" class="w-10 h-10 text-white">
+                <path d="M32 20 Q28 12 20 12 Q12 12 12 20 Q12 28 32 48 Q52 28 52 20 Q52 12 44 12 Q36 12 32 20" fill="currentColor"/>
+                <circle cx="32" cy="28" r="3" fill="white"/>
+            </svg>`,
+            HomeIconCustom: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <path d="M32 12 L12 28 L12 52 L24 52 L24 36 L40 36 L40 52 L52 52 L52 28 L32 12 Z" fill="currentColor"/>
+                <rect x="28" y="42" width="8" height="10" fill="white" rx="2"/>
+                <rect x="20" y="32" width="6" height="6" fill="white" rx="1"/>
+                <rect x="38" y="32" width="6" height="6" fill="white" rx="1"/>
+                <path d="M32 12 L28 16 L36 16 Z" fill="white" opacity="0.7"/>
+            </svg>`,
+            SettingsIconCustom: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <circle cx="32" cy="32" r="12" fill="currentColor"/>
+                <circle cx="32" cy="32" r="6" fill="white"/>
+                <rect x="30" y="8" width="4" height="8" fill="currentColor" rx="2"/>
+                <rect x="30" y="48" width="4" height="8" fill="currentColor" rx="2"/>
+                <rect x="8" y="30" width="8" height="4" fill="currentColor" rx="2"/>
+                <rect x="48" y="30" width="8" height="4" fill="currentColor" rx="2"/>
+                <rect x="20.5" y="15.5" width="4" height="8" fill="currentColor" rx="2" transform="rotate(45 22.5 19.5)"/>
+                <rect x="39.5" y="15.5" width="4" height="8" fill="currentColor" rx="2" transform="rotate(-45 41.5 19.5)"/>
+                <rect x="20.5" y="40.5" width="4" height="8" fill="currentColor" rx="2" transform="rotate(-45 22.5 44.5)"/>
+                <rect x="39.5" y="40.5" width="4" height="8" fill="currentColor" rx="2" transform="rotate(45 41.5 44.5)"/>
+            </svg>`,
+            HelpIconCustom: `<svg viewBox="0 0 64 64" class="w-14 h-14 text-white">
+                <circle cx="32" cy="32" r="26" fill="currentColor"/>
+                <path d="M24 24 Q24 16 32 16 Q40 16 40 24 Q40 28 36 30 L32 32 L32 36" stroke="white" stroke-width="4" stroke-linecap="round" fill="none"/>
+                <circle cx="32" cy="44" r="3" fill="white"/>
+                <circle cx="48" cy="20" r="2" fill="white" opacity="0.6"/>
+                <circle cx="16" cy="20" r="2" fill="white" opacity="0.6"/>
+                <circle cx="48" cy="44" r="2" fill="white" opacity="0.6"/>
+            </svg>`
+        };
+
+        // Timer management
+        let exerciseTimer = null;
+
+        // Screen Templates
+        const Screens = {
+            login: () => `
+                <div class="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e8f5e8] to-[#fff3e0] p-4 sm:p-6 flex flex-col overflow-hidden">
+                    <!-- Header -->
+                    <div class="text-center mb-8 sm:mb-12 pt-12 sm:pt-20">
+                        <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center shadow-xl">
+                            <svg viewBox="0 0 64 64" class="w-12 h-12 text-white">
+                                <path d="M32 20 Q28 12 20 12 Q12 12 12 20 Q12 28 32 48 Q52 28 52 20 Q52 12 44 12 Q36 12 32 20" fill="currentColor"/>
+                                <circle cx="32" cy="28" r="3" fill="white"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-5xl sm:text-6xl font-bold text-[#333] mb-3 sm:mb-4 leading-tight tracking-wide" style="font-family: Kanit, Sarabun, sans-serif">ชื่นใจ</h1>
+                        <p class="text-lg sm:text-2xl text-[#666]">แอปสุขภาพสำหรับครอบครัว</p>
+                    </div>
+
+                    <!-- Login Form -->
+                    <div class="flex-1 flex flex-col justify-center max-w-sm sm:max-w-md mx-auto w-full">
+                        <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-2 border-[#e0e0e0]">
+                            <h2 class="text-2xl sm:text-3xl font-semibold text-[#333] text-center mb-6">เข้าสู่ระบบ</h2>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="loginName" class="block text-lg font-medium text-[#666] mb-2">ชื่อ-นามสกุล</label>
+                                    <input 
+                                        type="text" 
+                                        id="loginName" 
+                                        value="${appState.loginData.name}"
+                                        placeholder="กรอกชื่อ-นามสกุล"
+                                        class="w-full px-4 py-4 text-lg border-2 border-[#e0e0e0] rounded-2xl focus:border-[#4a90e2] outline-none transition-colors"
+                                        onchange="updateLoginData('name', this.value)"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label for="loginPhone" class="block text-lg font-medium text-[#666] mb-2">เบอร์โทรศัพท์</label>
+                                    <input 
+                                        type="tel" 
+                                        id="loginPhone" 
+                                        value="${appState.loginData.phone}"
+                                        placeholder="0xx-xxx-xxxx"
+                                        class="w-full px-4 py-4 text-lg border-2 border-[#e0e0e0] rounded-2xl focus:border-[#4a90e2] outline-none transition-colors"
+                                        onchange="updateLoginData('phone', this.value)"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onclick="requestOTP()" 
+                                class="w-full mt-6 bg-[#4a90e2] text-white rounded-3xl py-6 text-xl sm:text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center min-touch-target"
+                                ${(!appState.loginData.name.trim() || !appState.loginData.phone.trim()) ? 'disabled style="opacity: 0.5;"' : ''}
+                            >
+                                ยืนยันตัวตน
+                            </button>
+                        </div>
+                        
+                        <!-- Info -->
+                        <div class="mt-6 text-center px-2">
+                            <p class="text-base sm:text-lg text-[#666]">
+                                🔒 ข้อมูลของคุณปลอดภัย<br/>
+                                เราจะส่งรหัส OTP เพื่อยืนยันตัวตน
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `,
+
+            otpVerification: () => `
+                <div class="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e8f5e8] to-[#fff3e0] p-4 sm:p-6 flex flex-col overflow-hidden">
+                    <!-- Header -->
+                    <div class="text-center mb-8 pt-12">
+                        <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center shadow-xl">
+                            <svg viewBox="0 0 24 24" class="w-12 h-12 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 12l2 2 4-4"/>
+                                <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
+                                <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"/>
+                                <path d="M12 21c0-1-1-3-3-3s-3 2-3 3 1 3 3 3 3-2 3-3"/>
+                                <path d="M12 3c0 1 1 3 3 3s3-2 3-3-1-3-3-3-3 2-3 3"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-4xl font-bold text-[#333] mb-2">ยืนยันตัวตน</h1>
+                        <p class="text-lg text-[#666]">กรอกรหัส OTP</p>
+                    </div>
+
+                    <!-- OTP Form -->
+                    <div class="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+                        <div class="bg-white rounded-3xl p-8 shadow-xl border-2 border-[#e0e0e0]">
+                            <div class="text-center mb-6">
+                                <p class="text-lg text-[#666] mb-2">
+                                    ส่งรหัส OTP ไปที่
+                                </p>
+                                <p class="text-xl font-semibold text-[#333]">
+                                    ${appState.loginData.phone}
+                                </p>
+                                <p class="text-base text-[#999] mt-2">
+                                    สำหรับการทดสอบ: รหัส OTP คือ <span class="font-bold text-[#4a90e2]">${appState.loginData.generatedOTP}</span>
+                                </p>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label for="otpInput" class="block text-lg font-medium text-[#666] mb-2 text-center">รหัส OTP</label>
+                                <input 
+                                    type="text" 
+                                    id="otpInput" 
+                                    value="${appState.loginData.otp}"
+                                    placeholder="กรอกรหัส 4 หลัก"
+                                    maxlength="4"
+                                    class="w-full px-4 py-6 text-3xl text-center font-bold border-2 border-[#e0e0e0] rounded-2xl focus:border-[#4a90e2] outline-none transition-colors tracking-widest"
+                                    onchange="updateLoginData('otp', this.value)"
+                                    oninput="this.value = this.value.replace(/[^0-9]/g, '').substring(0, 4)"
+                                />
+                            </div>
+                            
+                            <button 
+                                onclick="verifyOTP()" 
+                                class="w-full bg-[#81c784] text-white rounded-3xl py-6 text-xl font-semibold shadow-lg active:scale-95 transition-transform text-center min-touch-target"
+                                ${appState.loginData.otp.length !== 4 ? 'disabled style="opacity: 0.5;"' : ''}
+                            >
+                                ยืนยัน
+                            </button>
+                            
+                            <div class="flex justify-between mt-4">
+                                <button onclick="goBackToLogin()" class="text-[#4a90e2] font-semibold py-2 px-4">
+                                    ← กลับ
+                                </button>
+                                <button onclick="requestOTP()" class="text-[#4a90e2] font-semibold py-2 px-4">
+                                    ส่งรหัสใหม่
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Timer and Info -->
+                        <div class="mt-6 text-center">
+                            <p class="text-base text-[#666]">
+                                🕒 รหัส OTP มีอายุ 5 นาที<br/>
+                                หากไม่ได้รับรหัส กรุณาตรวจสอบเบอร์โทร
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `,
+
+            userSelection: () => `
+                <div class="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e8f5e8] to-[#fff3e0] p-4 sm:p-6 flex flex-col overflow-hidden">
+                    <!-- Header with User Info -->
+                    <div class="text-center mb-8 sm:mb-12 pt-8 sm:pt-12">
+                        <div class="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center shadow-xl">
+                            <svg viewBox="0 0 64 64" class="w-12 h-12 text-white">
+                                <path d="M32 20 Q28 12 20 12 Q12 12 12 20 Q12 28 32 48 Q52 28 52 20 Q52 12 44 12 Q36 12 32 20" fill="currentColor"/>
+                                <circle cx="32" cy="28" r="3" fill="white"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-5xl sm:text-6xl font-bold text-[#333] mb-2 leading-tight tracking-wide" style="font-family: Kanit, Sarabun, sans-serif">ชื่นใจ</h1>
+                        <p class="text-lg sm:text-xl text-[#666] mb-2">สวัสดี คุณ${appState.userInfo.name}</p>
+                        <p class="text-base text-[#999]">แอปสุขภาพสำหรับครอบครัว</p>
+                        
+                        <!-- Logout Button -->
+                        <button onclick="logout()" class="mt-4 px-4 py-2 text-sm text-[#666] hover:text-[#999] transition-colors">
+                            ออกจากระบบ
+                        </button>
+                    </div>
+
+                    <!-- Selection Title -->
+                    <div class="text-center mb-6 sm:mb-8">
+                        <h2 class="text-2xl sm:text-3xl font-semibold text-[#333] mb-2 leading-tight">เลือกการใช้งาน</h2>
+                        <p class="text-lg sm:text-xl text-[#666]">คุณเป็นใครในครอบครัว?</p>
+                    </div>
+
+                    <!-- Mode Selection Cards -->
+                    <div class="flex-1 flex flex-col gap-6 sm:gap-8 max-w-sm sm:max-w-md mx-auto w-full">
+                        <!-- Elderly Mode -->
+                        <button onclick="selectMode('elderly')" class="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-2 border-[#e0e0e0] hover:border-[#4a90e2] hover:shadow-2xl transition-all duration-300 active:scale-95 min-touch-target">
+                            <div class="text-center">
+                                <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                                    ${Icons.User}
+                                </div>
+                                <h3 class="text-2xl sm:text-3xl font-semibold text-[#333] mb-3 leading-tight">ผู้สูงอายุ</h3>
+                                <p class="text-lg sm:text-xl text-[#666] leading-relaxed">
+                                    ใช้งานง่าย ตัวอักษรใหญ่<br />
+                                    สำหรับพ่อแม่ ปู่ย่า ตายาย
+                                </p>
+                            </div>
+                        </button>
+
+                        <!-- Family Mode -->
+                        <button onclick="selectMode('family')" class="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-2 border-[#e0e0e0] hover:border-[#81c784] hover:shadow-2xl transition-all duration-300 active:scale-95 min-touch-target">
+                            <div class="text-center">
+                                <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-[#81c784] to-[#ff9800] rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                                    ${Icons.Users}
+                                </div>
+                                <h3 class="text-2xl sm:text-3xl font-semibold text-[#333] mb-3 leading-tight">ลูกหลาน</h3>
+                                <p class="text-lg sm:text-xl text-[#666] leading-relaxed">
+                                    ดูแลสุขภาพพ่อแม่<br />
+                                    ส่งกำลังใจและติดตาม
+                                </p>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="mt-6 sm:mt-8 text-center px-2">
+                        <p class="text-base sm:text-lg text-[#666]">
+                            สามารถเปลี่ยนโหมดได้ในหน้าตั้งค่า
+                        </p>
+                    </div>
+                </div>
+            `,
+
+            home: () => {
+                if (appState.userMode === 'elderly') {
+                    return `
+                        <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                            <div class="flex-1 p-6 pb-32">
+                                <!-- Header -->
+                                <div class="text-center mb-8 pt-8">
+                                    <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center shadow-lg">
+                                        ${Icons.HeartIcon}
+                                    </div>
+                                    <h1 class="text-4xl font-semibold text-[#333] mb-2">ชื่นใจ</h1>
+                                    <p class="text-xl text-[#666]">สวัสดี คุณ${appState.userInfo.name}</p>
+                                </div>
+
+                                <!-- Main Buttons -->
+                                <div class="flex-1 flex flex-col gap-6 max-w-md mx-auto w-full">
+                                    <button onclick="navigate('exercise')" class="bg-white rounded-3xl p-8 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                        <div class="flex items-center gap-6">
+                                            <div class="w-20 h-20 bg-gradient-to-br from-[#81c784] to-[#66bb6a] rounded-full flex items-center justify-center shadow-lg">
+                                                ${Icons.ExerciseIcon}
+                                            </div>
+                                            <div class="text-left">
+                                                <h2 class="text-3xl font-semibold text-[#333]">ออกกำลังกาย</h2>
+                                                <p class="text-xl text-[#666] mt-1">เริ่มต้นวันใหม่<br/>ด้วยการออกกำลังกาย</p>
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    <button onclick="navigate('health')" class="bg-white rounded-3xl p-8 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                        <div class="flex items-center gap-6">
+                                            <div class="w-20 h-20 bg-gradient-to-br from-[#4a90e2] to-[#3f7bd9] rounded-full flex items-center justify-center shadow-lg">
+                                                ${Icons.HealthIcon}
+                                            </div>
+                                            <div class="text-left">
+                                                <h2 class="text-3xl font-semibold text-[#333]">บันทึกสุขภาพ</h2>
+                                                <p class="text-xl text-[#666] mt-1">ตรวจสอบสุขภาพและบันทึกข้อมูล</p>
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    <button onclick="navigate('family')" class="bg-white rounded-3xl p-8 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                        <div class="flex items-center gap-6">
+                                            <div class="w-20 h-20 bg-gradient-to-br from-[#ff9800] to-[#f57c00] rounded-full flex items-center justify-center shadow-lg">
+                                                ${Icons.FamilyIcon}
+                                            </div>
+                                            <div class="text-left">
+                                                <h2 class="text-3xl font-semibold text-[#333]">ติดต่อครอบครัว</h2>
+                                                <p class="text-xl text-[#666] mt-1">ส่งข้อความหาลูกหลาน</p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                            ${renderBottomNavigation('home')}
+                        </div>
+                    `;
+                } else {
+                    // Family Home Screen
+                    const weeklyExerciseCount = getWeeklyExerciseCount();
+                    const today = new Date().toISOString().split('T')[0];
+                    const todayExercise = appState.exerciseRecords.find(record => record.date === today && record.completed);
+
+                    return `
+                        <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                            <div class="flex-1 p-4 pb-32">
+                                <!-- Header -->
+                                <div class="text-center mb-6 pt-8">
+                                    <div class="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center shadow-lg">
+                                        ${Icons.HeartIcon}
+                                    </div>
+                                    <h1 class="text-2xl font-semibold text-[#333] mb-1">ชื่นใจ</h1>
+                                    <p class="text-lg text-[#666]">ดูแลสุขภาพ${appState.userInfo.name}</p>
+                                </div>
+
+                                ${todayExercise ? `
+                                    <!-- Latest Exercise Alert -->
+                                    <div class="bg-[#81c784] text-white rounded-2xl p-4 mb-4 text-center">
+                                        <div class="w-10 h-10 mx-auto mb-2 bg-white/20 rounded-full flex items-center justify-center">
+                                            <svg viewBox="0 0 64 64" class="w-6 h-6 text-white">
+                                                <circle cx="32" cy="32" r="28" fill="currentColor"/>
+                                                <path d="M20 32 L28 40 L44 24" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                                            </svg>
+                                        </div>
+                                        <h3 class="text-lg font-semibold mb-1">ออกกำลังกายเสร็จแล้ว!</h3>
+                                        <p class="text-sm opacity-90">${todayExercise.exerciseType} • ${todayExercise.duration} นาที</p>
+                                        <p class="text-xs opacity-75">บันทึกอัตโนมัติจากแอป</p>
+                                    </div>
+                                ` : ''}
+
+                                <!-- Health Status Card -->
+                                <div class="bg-white rounded-2xl p-5 shadow-lg mb-4">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h2 class="text-xl font-semibold text-[#333]">สุขภาพวันนี้</h2>
+                                        <span class="text-sm text-[#666]">${todayExercise ? 'เพิ่งออกกำลังกายเสร็จ' : '2 ชั่วโมงที่แล้ว'}</span>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-2 gap-3 mb-4">
+                                        <div class="text-center">
+                                            <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${todayExercise ? 'bg-[#81c784]' : 'bg-[#ffb74d]'}">
+                                                ${Icons.Activity}
+                                            </div>
+                                            <p class="text-sm text-[#666]">ออกกำลังกายวันนี้</p>
+                                            <p class="text-xs font-semibold ${todayExercise ? 'text-[#81c784]' : 'text-[#ffb74d]'}">
+                                                ${todayExercise ? 'ทำแล้ว' : 'ยังไม่ทำ'}
+                                            </p>
+                                        </div>
+                                        
+                                        <div class="text-center">
+                                            <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 bg-[#ff9800]">
+                                                <span class="text-white font-semibold">😴</span>
+                                            </div>
+                                            <p class="text-sm text-[#666]">ค่าความเหนื่อย</p>
+                                            ${todayExercise?.fatigueLevel ? `
+                                                <p class="text-xs font-semibold text-[#ff9800]">${todayExercise.fatigueLevel}/5</p>
+                                            ` : `
+                                                <p class="text-xs font-semibold text-[#999]">ไม่ได้ออกกำลังกาย</p>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- Exercise Days This Week -->
+                                    <div class="bg-[#f0f8ff] rounded-xl p-3 mb-4">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm text-[#666]">ออกกำลังกายสัปดาห์นี้</span>
+                                            <span class="text-lg font-semibold text-[#81c784]">${weeklyExerciseCount} วัน</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Exercise Recommendation -->
+                                    <div class="bg-[#e8f5e8] rounded-xl p-3 mb-4">
+                                        <p class="text-sm font-semibold text-[#81c784] text-center">
+                                            ${getExerciseRecommendation(todayExercise?.fatigueLevel)}
+                                        </p>
+                                    </div>
+
+                                    ${renderWeeklyOverview()}
+                                </div>
+
+                                <!-- Quick Actions -->
+                                <div class="space-y-3">
+                                    <button onclick="showNotificationDemo()" class="w-full bg-[#4a90e2] text-white rounded-2xl p-4 flex items-center gap-4 shadow-lg active:scale-95 transition-transform">
+                                        <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                            ${Icons.Bell}
+                                        </div>
+                                        <div class="text-left">
+                                            <h3 class="text-lg font-semibold">แจ้งเตือน</h3>
+                                            <p class="text-sm opacity-90">เตือนออกกำลังกาย</p>
+                                        </div>
+                                    </button>
+
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <button onclick="navigate('family')" class="bg-white border-2 border-[#e0e0e0] rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-transform">
+                                            ${Icons.MessageCircle}
+                                            <span class="text-sm font-semibold text-[#333]">เลือกคนแชท</span>
+                                        </button>
+                                        
+                                        <button onclick="navigate('healthHistory')" class="bg-white border-2 border-[#e0e0e0] rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-transform">
+                                            ${Icons.Calendar}
+                                            <span class="text-sm font-semibold text-[#333]">ดูประวัติสุขภาพ</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                ${!todayExercise ? `
+                                    <!-- Alerts -->
+                                    <div class="mt-4 bg-[#fff3e0] border border-[#ffb74d] rounded-2xl p-4">
+                                        <div class="flex items-center gap-3">
+                                            ${Icons.AlertTriangle}
+                                            <div>
+                                                <p class="text-sm font-semibold text-[#333]">แจ้งเตือน</p>
+                                                <p class="text-sm text-[#666]">ยังไม่ได้ออกกำลังกายวันนี้</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            ${renderBottomNavigation('home')}
+                        </div>
+                    `;
+                }
+            },
+
+            exercise: () => {
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <button onclick="navigate('home')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                ${Icons.ArrowLeft}
+                            </button>
+                            <h1 class="text-3xl font-semibold text-[#333]">ออกกำลังกาย</h1>
+                        </div>
+
+                        <!-- Exercise Categories -->
+                        <div class="flex-1">
+                            <h2 class="text-2xl font-semibold text-[#333] mb-6">เลือกประเภทการออกกำลังกาย</h2>
+                            
+                            <div class="space-y-4">
+                                ${exercises.map(exercise => `
+                                    <button onclick="startExercise('${exercise.id}')" class="w-full bg-white rounded-3xl p-6 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                        <div class="flex items-center gap-6">
+                                            <div class="w-20 h-20 rounded-3xl flex items-center justify-center" style="background-color: ${exercise.color}20; color: ${exercise.color}">
+                                                <span class="text-4xl">${exercise.icon}</span>
+                                            </div>
+                                            <div class="text-left flex-1">
+                                                <h3 class="text-2xl font-semibold text-[#333] mb-1">${exercise.title}</h3>
+                                                <p class="text-lg text-[#666]">${exercise.subtitle}</p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+
+                            <!-- Motivational Message -->
+                            <div class="mt-8 bg-gradient-to-r from-[#81c784] to-[#4a90e2] rounded-3xl p-6 text-white text-center">
+                                <div class="text-4xl mb-3">💪</div>
+                                <h3 class="text-2xl font-semibold mb-2">เริ่มต้นวันใหม่<br/>ด้วยการออกกำลังกาย</h3>
+                                <p class="text-lg opacity-90">การเคลื่อนไหวเพียงเล็กน้อยก็ดีต่อสุขภาพแล้ว</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            exerciseSession: (exerciseId) => {
+                const exercise = exercises.find(e => e.id === exerciseId);
+                const progress = exercise ? (appState.currentTime / exercise.duration) * 100 : 0;
+                
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <button onclick="resetExercise()" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                ${Icons.ArrowLeft}
+                            </button>
+                            <h1 class="text-3xl font-semibold text-[#333]">${exercise?.title}</h1>
+                        </div>
+
+                        <!-- Completion Message -->
+                        ${appState.isCompleted && !appState.showFatigueSelection ? `
+                            <div class="bg-[#81c784] text-white rounded-3xl p-6 mb-6 text-center">
+                                ${Icons.CheckCircle}
+                                <h2 class="text-2xl font-semibold mb-2">เยี่ยมมาก! ออกกำลังกายครบแล้ว</h2>
+                                <p class="text-lg opacity-90">กรุณาเลือกระดับความเหนื่อย</p>
+                            </div>
+                        ` : ''}
+
+                        <!-- Video Player Mock -->
+                        <div class="bg-black rounded-3xl mb-8 relative overflow-hidden" style="aspect-ratio: 16/9;">
+                            <div class="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                                <div class="text-center">
+                                    <div class="mb-4 text-white flex justify-center">
+                                        <span class="text-6xl">${exercise?.icon}</span>
+                                    </div>
+                                    <h3 class="text-2xl text-white mb-2">
+                                        ${exercise?.id === 'test' ? 'ทดสอบระบบการบันทึก' : 'วิดีโอแนะนำการออกกำลังกาย'}
+                                    </h3>
+                                    <p class="text-lg text-gray-300">${exercise?.subtitle}</p>
+                                    
+                                    <!-- Timer Display -->
+                                    <div class="mt-6">
+                                        <div class="text-4xl font-bold text-white mb-2">
+                                            ${formatTime(appState.currentTime)} / ${formatTime(exercise?.duration || 0)}
+                                        </div>
+                                        
+                                        <!-- Progress Bar -->
+                                        <div class="w-64 h-3 bg-gray-600 rounded-full mx-auto overflow-hidden">
+                                            <div class="h-full bg-[#81c784] transition-all duration-1000 ease-out" style="width: ${progress}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Play Controls -->
+                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6">
+                                <div class="flex items-center justify-center gap-6">
+                                    <button onclick="toggleExercise()" ${appState.isCompleted ? 'disabled' : ''} class="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg disabled:opacity-50">
+                                        ${appState.isPlaying ? Icons.Pause : Icons.Play}
+                                    </button>
+                                    <button class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                        ${Icons.Volume2}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Exercise Info -->
+                        <div class="bg-white rounded-3xl p-6 shadow-lg mb-6">
+                            <h3 class="text-2xl font-semibold text-[#333] mb-4">รายละเอียดการออกกำลังกาย</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-8 h-8 bg-[#81c784] rounded-full flex items-center justify-center">
+                                        <span class="text-white font-semibold">⏱</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-xl font-semibold text-[#333]">ระยะเวลา</p>
+                                        <p class="text-lg text-[#666]">
+                                            ${exercise?.id === 'test' 
+                                                ? `${exercise.duration} วินาที` 
+                                                : `${Math.floor((exercise?.duration || 0) / 60)} นาที`}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <div class="w-8 h-8 bg-[#ff9800] rounded-full flex items-center justify-center">
+                                        <span class="text-white font-semibold">📊</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-xl font-semibold text-[#333]">ความคืบหน้า</p>
+                                        <p class="text-lg text-[#666]">${Math.round(progress)}% เสร็จสิ้น</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="mt-auto space-y-4">
+                            ${!appState.isCompleted ? `
+                                <button onclick="toggleExercise()" class="w-full bg-[#81c784] text-white rounded-3xl py-6 text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center">
+                                    ${appState.isPlaying ? 'หยุดชั่วคราว' : 'เริ่มออกกำลังกาย'}
+                                </button>
+                                
+                                ${((exercise?.id === 'test' && appState.currentTime > 2) || (exercise?.id !== 'test' && appState.currentTime > 60)) ? `
+                                    <button onclick="stopEarly()" class="w-full bg-[#ff9800] text-white rounded-3xl py-6 text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center">
+                                        เสร็จสิ้นการออกกำลังกาย
+                                    </button>
+                                ` : ''}
+                                
+                                <button onclick="resetExercise()" class="w-full bg-white text-[#333] border-2 border-[#e0e0e0] rounded-3xl py-6 text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center">
+                                    เริ่มใหม่
+                                </button>
+                            ` : `
+                                <button onclick="resetExercise()" class="w-full bg-[#4a90e2] text-white rounded-3xl py-6 text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center">
+                                    ออกกำลังกายท่าอื่น
+                                </button>
+                            `}
+                            
+                            <button onclick="resetExercise()" class="w-full bg-white text-[#333] border-2 border-[#e0e0e0] rounded-3xl py-6 text-2xl font-semibold shadow-lg active:scale-95 transition-transform text-center">
+                                เลือกท่าออกกำลังกายอื่น
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            fatigueRating: () => {
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <div class="w-12 h-12"></div> <!-- Spacer -->
+                            <h1 class="text-3xl font-semibold text-[#333]">ระดับความเหนื่อย</h1>
+                        </div>
+
+                        <!-- Completion Message -->
+                        <div class="bg-[#81c784] text-white rounded-3xl p-6 mb-8 text-center">
+                            ${Icons.CheckCircle}
+                            <h2 class="text-2xl font-semibold mb-2">เยี่ยมมาก! ออกกำลังกายเสร็จแล้ว</h2>
+                            <p class="text-lg opacity-90">ใช้เวลา ${appState.exerciseData?.duration} นาที</p>
+                        </div>
+
+                        <!-- Fatigue Level Selection -->
+                        <div class="bg-white rounded-3xl p-6 shadow-lg mb-8">
+                            <h3 class="text-2xl font-semibold text-[#333] mb-4 text-center">
+                                คุณรู้สึกเหนื่อยแค่ไหนหลังออกกำลังกาย?
+                            </h3>
+                            <p class="text-lg text-[#666] mb-6 text-center">
+                                กรุณาเลือกระดับความเหนื่อยของคุณ
+                            </p>
+                            
+                            <div class="space-y-3">
+                                ${[1, 2, 3, 4, 5].map((level) => `
+                                    <button onclick="selectFatigue(${level})" class="w-full bg-[#f8f9fa] hover:bg-[#e9ecef] border-2 border-[#e0e0e0] hover:border-[#4a90e2] rounded-2xl p-4 transition-all active:scale-95">
+                                        <div class="flex items-center gap-4">
+                                            <div class="w-16 h-16 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                                                ${level}
+                                            </div>
+                                            <div class="text-left flex-1">
+                                                <p class="text-xl font-semibold text-[#333]">
+                                                    ระดับ ${level} - ${
+                                                        level === 1 ? 'เหนื่อยน้อยมาก (สดชื่น)' :
+                                                        level === 2 ? 'เหนื่อยเล็กน้อย' :
+                                                        level === 3 ? 'เหนื่อยปานกลาง' :
+                                                        level === 4 ? 'เหนื่อยมาก' :
+                                                        'เหนื่อยมากที่สุด (หอบหายใจ)'
+                                                    }
+                                                </p>
+                                                <p class="text-base text-[#666]">
+                                                    ${
+                                                        level === 1 ? 'รู้สึกดี พร้อมทำกิจกรรมต่อ' :
+                                                        level === 2 ? 'เหนื่อยเล็กน้อย แต่ยังสบาย' :
+                                                        level === 3 ? 'เหนื่อยพอควร หายใจหนักเล็กน้อย' :
+                                                        level === 4 ? 'เหนื่อยมาก หายใจหนัก' :
+                                                        'เหนื่อยมากที่สุด ต้องพักผ่อน'
+                                                    }
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+                            
+                            <div class="mt-6 bg-[#fff3e0] border border-[#ffb74d] rounded-2xl p-4">
+                                <p class="text-base text-[#333] text-center">
+                                    💡 ข้อมูลนี้จะช่วยให้เราปรับโปรแกรมการออกกำลังกายให้เหมาะสมกับคุณมากขึ้น
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            family: () => {
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <div class="flex-1 pb-24">
+                            <!-- Header -->
+                            <div class="bg-white p-4 shadow-sm sticky top-0 z-10">
+                                <div class="flex items-center gap-4">
+                                    <button onclick="navigate('home')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                                        ${Icons.ArrowLeft}
+                                    </button>
+                                    <div>
+                                        <h1 class="text-2xl font-semibold text-[#333]">แชทครอบครัว</h1>
+                                        <p class="text-base text-[#666]">เลือกคนที่จะแชท</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Chat List -->
+                            <div class="p-4">
+                                <div class="space-y-2">
+                                    ${familyMembers.map((member) => `
+                                        <button onclick="startIndividualChat('${member.id}')" class="w-full bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-all active:scale-98 flex items-center gap-4">
+                                            <div class="relative">
+                                                <div class="w-16 h-16 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center text-2xl shadow-lg">
+                                                    ${member.avatar}
+                                                </div>
+                                                ${member.online ? `
+                                                    <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-[#81c784] rounded-full border-3 border-white shadow-sm"></div>
+                                                ` : ''}
+                                                ${member.unreadCount && member.unreadCount > 0 ? `
+                                                    <div class="absolute -top-1 -right-1 w-6 h-6 bg-[#ff6b6b] rounded-full flex items-center justify-center shadow-sm">
+                                                        <span class="text-white text-sm font-bold">${member.unreadCount}</span>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                            
+                                            <div class="flex-1 text-left min-w-0">
+                                                <div class="flex items-center justify-between mb-1">
+                                                    <h3 class="text-xl font-semibold text-[#333] truncate">${member.name}</h3>
+                                                    <span class="text-sm text-[#999] whitespace-nowrap ml-2">${member.lastMessageTime}</span>
+                                                </div>
+                                                <p class="text-base text-[#666] truncate leading-relaxed">
+                                                    ${member.lastMessage || 'แตะเพื่อเริ่มแชท'}
+                                                </p>
+                                                <div class="flex items-center gap-1 mt-1">
+                                                    <div class="w-2 h-2 rounded-full ${member.online ? 'bg-[#81c784]' : 'bg-gray-400'}"></div>
+                                                    <span class="text-sm text-[#999]">
+                                                        ${member.online ? 'ออนไลน์' : 'ออฟไลน์'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div class="flex flex-col gap-2">
+                                                <button onclick="makeCall('${member.id}'); event.stopPropagation();" class="w-12 h-12 bg-[#81c784] rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg">
+                                                    ${Icons.Phone}
+                                                </button>
+                                                <button onclick="makeVideoCall('${member.id}'); event.stopPropagation();" class="w-12 h-12 bg-[#4a90e2] rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg">
+                                                    ${Icons.Video}
+                                                </button>
+                                            </div>
+                                        </button>
+                                    `).join('')}
+                                </div>
+
+                                <!-- Group Actions -->
+                                <div class="mt-6 space-y-3">
+                                    <button onclick="startGroupChat()" class="w-full bg-[#ff9800] text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-transform">
+                                        ${Icons.MessageCircle}
+                                        แชทกลุ่มครอบครัว
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        ${renderBottomNavigation('family')}
+                    </div>
+                `;
+            },
+
+            individualChat: (contactId) => {
+                const contact = familyMembers.find(m => m.id === contactId);
+                if (!contact) {
+                    return `
+                        <div class="min-h-screen bg-[#f0f8ff] flex items-center justify-center">
+                            <p class="text-xl text-[#666]">ไม่พบข้อมูลผู้ติดต่อ</p>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <!-- Header -->
+                        <div class="bg-white p-4 shadow-lg sticky top-0 z-10">
+                            <div class="flex items-center gap-4">
+                                <button onclick="navigate('family')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                                    ${Icons.ArrowLeft}
+                                </button>
+                                
+                                <div class="flex items-center gap-3 flex-1">
+                                    <div class="relative">
+                                        <div class="w-14 h-14 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center text-2xl shadow-lg">
+                                            ${contact.avatar}
+                                        </div>
+                                        ${contact.online ? `
+                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-[#81c784] rounded-full border-3 border-white"></div>
+                                        ` : ''}
+                                    </div>
+                                    <div>
+                                        <h1 class="text-xl font-semibold text-[#333]">${contact.name}</h1>
+                                        <p class="text-base text-[#666]">
+                                            ${contact.online ? '🟢 ออนไลน์' : '🔘 ออฟไลน์'} • ลูกสาว
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    <button onclick="makeCall('${contact.id}')" class="w-12 h-12 bg-[#81c784] rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg">
+                                        ${Icons.Phone}
+                                    </button>
+                                    <button onclick="makeVideoCall('${contact.id}')" class="w-12 h-12 bg-[#4a90e2] rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg">
+                                        ${Icons.Video}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Messages -->
+                        <div class="flex-1 p-4 overflow-y-auto" style="height: calc(100vh - 240px);">
+                            <div class="space-y-4 pb-4">
+                                <!-- Sample messages for ${contact.name} -->
+                                <div class="flex justify-start">
+                                    <div class="max-w-[80%] px-5 py-3 rounded-2xl shadow-sm bg-white text-[#333] rounded-bl-sm border border-gray-100">
+                                        <p class="text-sm font-semibold mb-1 text-[#4a90e2]">${contact.name}</p>
+                                        <p class="text-lg leading-relaxed">สวัสดีค่ะแม่ วันนี้สบายดีมั้ยคะ</p>
+                                        <p class="text-sm mt-2 text-[#999]">08:30</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex justify-end">
+                                    <div class="max-w-[80%] px-5 py-3 rounded-2xl shadow-sm bg-[#4a90e2] text-white rounded-br-sm">
+                                        <p class="text-lg leading-relaxed">สบายดีลูก แม่พึ่งตื่นเอง</p>
+                                        <p class="text-sm mt-2 text-blue-100">08:45</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex justify-start">
+                                    <div class="max-w-[80%] px-5 py-3 rounded-2xl shadow-sm bg-white text-[#333] rounded-bl-sm border border-gray-100">
+                                        <p class="text-sm font-semibold mb-1 text-[#4a90e2]">${contact.name}</p>
+                                        <p class="text-lg leading-relaxed">แม่สบายดีมั้ยคะ วันนี้อากาศร้อน อย่าลืมดื่มน้ำเยอะๆ นะคะ</p>
+                                        <p class="text-sm mt-2 text-[#999]">09:30</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Messages -->
+                        <div class="p-4 bg-white border-t border-gray-100">
+                            <div class="mb-4">
+                                <p class="text-base font-semibold text-[#333] mb-3">ข้อความด่วน</p>
+                                <div class="grid grid-cols-2 gap-2">
+                                    ${['สบายดีมั้ยลูก', 'คิดถึงนะ', 'รักลูก', 'ขอบใจลูก'].map(msg => `
+                                        <button onclick="sendQuickMessage('${msg}')" class="bg-[#f0f8ff] hover:bg-[#e1f5fe] border border-[#e0e0e0] rounded-xl p-3 text-base text-[#333] transition-all active:scale-95 font-medium">
+                                            ${msg}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- Message Input -->
+                            <div class="bg-[#f8f9fa] rounded-2xl p-3 border border-gray-200">
+                                <div class="flex items-center gap-3">
+                                    <input type="text" id="messageInput" placeholder="พิมพ์ข้อความ..." class="flex-1 px-4 py-3 text-lg bg-white rounded-xl border border-gray-200 focus:border-[#4a90e2] outline-none transition-colors" onkeypress="handleEnterKey(event)" />
+                                    
+                                    <button onclick="sendMessage()" class="w-14 h-14 bg-[#4a90e2] rounded-full flex items-center justify-center active:scale-95 transition-all shadow-lg">
+                                        <svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="22" y1="2" x2="11" y2="13"/>
+                                            <polygon points="22,2 15,22 11,13 2,9"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            groupChat: () => {
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <!-- Header -->
+                        <div class="bg-white p-4 shadow-lg sticky top-0 z-10">
+                            <div class="flex items-center gap-4">
+                                <button onclick="navigate('family')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center min-touch-target">
+                                    ${Icons.ArrowLeft}
+                                </button>
+                                
+                                <div class="flex-1">
+                                    <h1 class="text-2xl font-semibold text-[#333]">แชทกลุ่มครอบครัว</h1>
+                                    <p class="text-base text-[#666]">
+                                        ${familyMembers.filter(c => c.online).length} คน ออนไลน์
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Favorites Section -->
+                        <div class="p-4 bg-white border-b border-gray-100">
+                            <h2 class="text-xl font-semibold text-[#333] mb-4">ติดต่อด่วน</h2>
+                            <div class="flex gap-4 overflow-x-auto pb-2">
+                                ${familyMembers.slice(0, 3).map((contact) => `
+                                    <button onclick="startIndividualChat('${contact.id}')" class="flex-shrink-0 flex flex-col items-center gap-3 p-4 bg-[#f0f8ff] rounded-2xl min-w-[90px] active:scale-95 transition-transform border border-gray-100">
+                                        <div class="relative">
+                                            <div class="w-16 h-16 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center text-2xl shadow-lg">
+                                                ${contact.avatar}
+                                            </div>
+                                            <div class="absolute -bottom-1 -right-1 w-5 h-5 ${contact.online ? 'bg-[#81c784]' : 'bg-gray-400'} rounded-full border-3 border-white"></div>
+                                            ${contact.unreadCount ? `
+                                                <div class="absolute -top-1 -right-1 w-6 h-6 bg-[#ff6b6b] rounded-full flex items-center justify-center">
+                                                    <span class="text-white text-sm font-bold">${contact.unreadCount}</span>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        <p class="text-base text-[#333] text-center font-semibold">
+                                            ${contact.name}
+                                        </p>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- All Contacts List -->
+                        <div class="flex-1 bg-white">
+                            <div class="p-4">
+                                <h2 class="text-xl font-semibold text-[#333] mb-4">ครอบครัวทั้งหมด</h2>
+                            </div>
+                            
+                            <div class="space-y-2 px-4 pb-4">
+                                ${familyMembers.map((contact) => `
+                                    <button onclick="startIndividualChat('${contact.id}')" class="w-full p-4 bg-white hover:bg-[#f0f8ff] transition-colors rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 active:scale-98">
+                                        <!-- Avatar with Status -->
+                                        <div class="relative">
+                                            <div class="w-16 h-16 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center text-2xl shadow-lg">
+                                                ${contact.avatar}
+                                            </div>
+                                            <div class="absolute -bottom-1 -right-1 w-5 h-5 ${contact.online ? 'bg-[#81c784]' : 'bg-gray-400'} rounded-full border-3 border-white"></div>
+                                            ${contact.unreadCount ? `
+                                                <div class="absolute -top-1 -right-1 w-6 h-6 bg-[#ff6b6b] rounded-full flex items-center justify-center">
+                                                    <span class="text-white text-sm font-bold">${contact.unreadCount}</span>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+
+                                        <!-- Contact Info -->
+                                        <div class="flex-1 text-left">
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <h3 class="text-xl font-semibold text-[#333]">${contact.name}</h3>
+                                                ${contact.unreadCount ? `
+                                                    <svg viewBox="0 0 24 24" class="w-5 h-5 text-[#ff6b6b]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                                                    </svg>
+                                                ` : ''}
+                                            </div>
+                                            <p class="text-base text-[#666] mb-1">ลูกสาว</p>
+                                            <div class="flex items-center gap-2">
+                                                <div class="w-3 h-3 ${contact.online ? 'bg-[#81c784]' : 'bg-gray-400'} rounded-full"></div>
+                                                <p class="text-base text-[#666]">${contact.online ? 'ออนไลน์' : 'ออฟไลน์'}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <div class="flex gap-2">
+                                            <button onclick="makeCall('${contact.id}'); event.stopPropagation();" class="w-12 h-12 bg-[#81c784] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+                                                ${Icons.Phone}
+                                            </button>
+                                            <div class="w-12 h-12 bg-[#4a90e2] rounded-full flex items-center justify-center shadow-lg">
+                                                ${Icons.MessageCircle}
+                                            </div>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Bottom Action - Group Features -->
+                        <div class="p-4 bg-white border-t border-gray-100 space-y-3">
+                            <button onclick="sendGroupMessage()" class="w-full bg-[#ff9800] text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 active:scale-95 transition-transform text-lg shadow-lg">
+                                <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                                ส่งข้อความให้ทุกคน
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            health: () => {
+                const today = new Date().toISOString().split('T')[0];
+                const todayExercise = appState.exerciseRecords.find(record => record.date === today && record.completed);
+                
+                // Calculate weekly exercise days
+                const oneWeekAgo = new Date();
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                const weeklyExerciseCount = appState.exerciseRecords.filter(record => {
+                    const recordDate = new Date(record.date);
+                    return recordDate >= oneWeekAgo && record.completed;
+                }).length;
+                
+                // Calculate average fatigue level from recent exercise records
+                const getAverageFatigue = () => {
+                    const recentExerciseRecords = appState.exerciseRecords
+                        .filter(record => record.completed && record.fatigueLevel)
+                        .slice(0, 5); // Last 5 exercise sessions
+                    
+                    if (recentExerciseRecords.length === 0) return null;
+                    
+                    const totalFatigue = recentExerciseRecords.reduce((sum, record) => sum + (record.fatigueLevel || 0), 0);
+                    return Math.round(totalFatigue / recentExerciseRecords.length * 10) / 10;
+                };
+
+                const currentFatigue = todayExercise?.fatigueLevel || getAverageFatigue();
+                
+                // Auto-generated health data based on exercise records
+                const healthData = [
+                    { 
+                        label: 'ค่าความเหนื่อย', 
+                        value: currentFatigue ? `${currentFatigue}/5` : 'ไม่ได้ออกกำลังกาย', 
+                        status: 'normal', 
+                        emoji: '😴', 
+                        color: '#ff9800',
+                        source: todayExercise ? 'จากการออกกำลังกายวันนี้' : 'จากค่าเฉลี่ย'
+                    },
+                    { 
+                        label: 'ออกกำลังกายสัปดาห์นี้', 
+                        value: `${weeklyExerciseCount} วัน`, 
+                        status: weeklyExerciseCount >= 3 ? 'good' : 'warning', 
+                        emoji: '🏃‍♀️', 
+                        color: '#81c784',
+                        source: 'บันทึกอัตโนมัติ'
+                    },
+                ];
+
+                // Exercise recommendations based on fatigue level
+                const getExerciseRecommendation = (fatigue) => {
+                    if (!fatigue) return "แนะนำ: เริ่มออกกำลังกายเบาๆ";
+                    if (fatigue <= 2) return "แนะนำ: ออกกำลังกาย 5-6 วัน/สัปดาห์";
+                    if (fatigue <= 3) return "แนะนำ: ออกกำลังกาย 4-5 วัน/สัปดาห์";
+                    if (fatigue <= 4) return "แนะนำ: ออกกำลังกาย 2-3 วัน/สัปดาห์";
+                    return "แนะนำ: พักผ่อนเพิ่มเติม ออกกำลังกายเบาๆ 1-2 วัน/สัปดาห์";
+                };
+
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <button onclick="navigate('home')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                ${Icons.ArrowLeft}
+                            </button>
+                            <h1 class="text-3xl font-semibold text-[#333]">บันทึกสุขภาพ</h1>
+                        </div>
+
+                        <!-- Today's Exercise Status -->
+                        ${todayExercise ? `
+                            <div class="bg-[#81c784] text-white rounded-3xl p-6 shadow-lg mb-6">
+                                <div class="flex items-center gap-4 mb-4">
+                                    <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                        <svg viewBox="0 0 24 24" class="w-8 h-8 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                                            <polyline points="22,4 12,14.01 9,11.01"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-2xl font-semibold">ออกกำลังกายวันนี้เรียบร้อย!</h2>
+                                        <p class="text-lg opacity-90">ข้อมูลบันทึกอัตโนมัติ</p>
+                                    </div>
+                                </div>
+                                <div class="bg-white/10 rounded-2xl p-4">
+                                    <div class="grid grid-cols-2 gap-4 text-center">
+                                        <div>
+                                            <p class="text-sm opacity-90">ประเภท</p>
+                                            <p class="text-lg font-semibold">${todayExercise.exerciseType}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm opacity-90">ระยะเวลา</p>
+                                            <p class="text-lg font-semibold">${todayExercise.duration} นาที</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="bg-[#fff3e0] border-2 border-[#ffb74d] rounded-3xl p-6 shadow-lg mb-6">
+                                <div class="flex items-center gap-4 mb-4">
+                                    <div class="w-12 h-12 bg-[#ffb74d] rounded-full flex items-center justify-center">
+                                        <svg viewBox="0 0 24 24" class="w-8 h-8 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10"/>
+                                            <polyline points="12,6 12,12 16,14"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-2xl font-semibold text-[#333]">ยังไม่ได้ออกกำลังกายวันนี้</h2>
+                                        <p class="text-lg text-[#666]">เมื่อออกกำลังกายแล้ว ข้อมูลจะบันทึกอัตโนมัติ</p>
+                                    </div>
+                                </div>
+                                <button onclick="navigate('exercise')" class="w-full bg-[#ffb74d] text-white rounded-2xl py-4 text-xl font-semibold shadow-lg active:scale-95 transition-transform text-center flex items-center justify-center">
+                                    เริ่มออกกำลังกาย
+                                </button>
+                            </div>
+                        `}
+
+                        <!-- Current Health Status -->
+                        <div class="bg-white rounded-3xl p-6 shadow-lg mb-6">
+                            <h2 class="text-2xl font-semibold text-[#333] mb-4">สุขภาพในวันนี้</h2>
+                            <div class="space-y-4">
+                                ${healthData.map((item, index) => `
+                                    <div class="flex items-center gap-4 p-4 bg-[#f8f9fa] rounded-2xl">
+                                        <div class="w-12 h-12 rounded-full flex items-center justify-center" style="background-color: ${item.color}">
+                                            <span class="text-2xl">${item.emoji}</span>
+                                        </div>
+                                        <div class="flex-1">
+                                            <p class="text-lg text-[#666]">${item.label}</p>
+                                            <p class="text-xl font-semibold text-[#333]">${item.value}</p>
+                                            <p class="text-sm text-[#999]">${item.source}</p>
+                                        </div>
+                                        <div class="w-8 h-8 rounded-full" style="background-color: ${item.color}" title="บันทึกอัตโนมัติ"></div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            
+                            <!-- Exercise Recommendation -->
+                            <div class="mt-4 p-4 bg-[#f0f8ff] rounded-2xl">
+                                <p class="text-lg font-semibold text-[#4a90e2] text-center">
+                                    ${getExerciseRecommendation(currentFatigue)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- View History Buttons -->
+                        <div class="space-y-4">
+                            <button onclick="setHealthView('week')" class="w-full bg-[#4a90e2] text-white rounded-3xl py-6 flex items-center justify-center gap-4 shadow-lg active:scale-95 transition-transform">
+                                <span class="text-3xl">📅</span>
+                                <span class="text-2xl font-semibold">ดูข้อมูล 7 วันที่ผ่านมา</span>
+                            </button>
+                            
+                            <button onclick="setHealthView('month')" class="w-full bg-white text-[#333] border-2 border-[#e0e0e0] rounded-3xl py-6 flex items-center justify-center gap-4 shadow-lg active:scale-95 transition-transform">
+                                <span class="text-3xl">📊</span>
+                                <span class="text-2xl font-semibold">ดูข้อมูล 30 วันที่ผ่านมา</span>
+                            </button>
+                        </div>
+
+                        <!-- Emergency Notice -->
+                        <div class="mt-6 bg-[#fff3e0] border-2 border-[#ff9800] rounded-3xl p-6">
+                            <p class="text-xl text-[#333] text-center">
+                                🚨 หากมีอาการผิดปกติ กรุณาติดต่อแพทย์ทันที
+                            </p>
+                        </div>
+                    </div>
+                `;
+            },
+
+            healthWeek: () => {
+                // Generate weekly data from actual exercise records
+                const getWeeklyData = () => {
+                    const weeklyData = [];
+                    const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+                    
+                    for (let i = 6; i >= 0; i--) {
+                        const date = new Date();
+                        date.setDate(date.getDate() - i);
+                        const dateStr = date.toISOString().split('T')[0];
+                        const dayExerciseRecord = appState.exerciseRecords.find(record => record.date === dateStr && record.completed);
+                        
+                        weeklyData.push({
+                            day: days[date.getDay()],
+                            fatigue: dayExerciseRecord?.fatigueLevel || null,
+                            exercise: !!dayExerciseRecord,
+                            exerciseType: dayExerciseRecord?.exerciseType,
+                            duration: dayExerciseRecord?.duration
+                        });
+                    }
+                    return weeklyData;
+                };
+
+                const weeklyData = getWeeklyData();
+
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <button onclick="setHealthView('main')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                ${Icons.ArrowLeft}
+                            </button>
+                            <h1 class="text-3xl font-semibold text-[#333]">สุขภาพ 7 วันที่ผ่านมา</h1>
+                        </div>
+
+                        <div class="space-y-4">
+                            ${weeklyData.map((day, index) => `
+                                <div class="bg-white rounded-3xl p-6 shadow-lg">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h3 class="text-2xl font-semibold text-[#333]">${day.day}</h3>
+                                        ${day.exercise ? `
+                                            <div class="w-8 h-8 bg-[#81c784] rounded-full flex items-center justify-center">
+                                                <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                                                </svg>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="text-center">
+                                            <p class="text-lg text-[#666]">ค่าความเหนื่อย</p>
+                                            ${day.fatigue ? `
+                                                <p class="text-xl font-semibold text-[#333]">${day.fatigue}/5</p>
+                                                <div class="w-4 h-4 rounded-full mx-auto mt-1 ${
+                                                    day.fatigue <= 2 ? 'bg-[#81c784]' : 
+                                                    day.fatigue <= 3 ? 'bg-[#ff9800]' : 'bg-[#ef5350]'
+                                                }"></div>
+                                            ` : `
+                                                <p class="text-xl font-semibold text-[#999]">-</p>
+                                                <div class="w-4 h-4 rounded-full mx-auto mt-1 bg-[#e0e0e0]"></div>
+                                            `}
+                                        </div>
+                                        <div class="text-center">
+                                            <p class="text-lg text-[#666]">ออกกำลังกาย</p>
+                                            ${day.exercise ? `
+                                                <p class="text-xl font-semibold text-[#333]">ออก</p>
+                                                <p class="text-sm text-[#666]">${day.duration} นาที</p>
+                                            ` : `
+                                                <p class="text-xl font-semibold text-[#333]">ไม่ออก</p>
+                                            `}
+                                            <div class="w-4 h-4 rounded-full mx-auto mt-1 ${day.exercise ? 'bg-[#81c784]' : 'bg-[#e0e0e0]'}"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            },
+
+            healthMonth: () => {
+                // Generate monthly data from actual exercise records
+                const getMonthlyData = () => {
+                    const monthlyData = [];
+                    const now = new Date();
+                    
+                    for (let week = 3; week >= 0; week--) {
+                        const weekStart = new Date(now);
+                        weekStart.setDate(now.getDate() - (week * 7) - 6);
+                        const weekEnd = new Date(now);
+                        weekEnd.setDate(now.getDate() - (week * 7));
+                        
+                        const weekRecords = appState.exerciseRecords.filter(record => {
+                            const recordDate = new Date(record.date);
+                            return recordDate >= weekStart && recordDate <= weekEnd && record.completed;
+                        });
+                        
+                        const avgFatigue = weekRecords.length > 0 
+                            ? weekRecords.reduce((sum, record) => sum + (record.fatigueLevel || 0), 0) / weekRecords.length
+                            : 0;
+                        
+                        monthlyData.push({
+                            week: `สัปดาห์ที่ ${4 - week}`,
+                            avgFatigue: avgFatigue > 0 ? Math.round(avgFatigue * 10) / 10 : 0,
+                            exerciseDays: weekRecords.length
+                        });
+                    }
+                    return monthlyData;
+                };
+
+                const monthlyData = getMonthlyData();
+                const today = new Date().toISOString().split('T')[0];
+                const todayExercise = appState.exerciseRecords.find(record => record.date === today && record.completed);
+                
+                // Calculate average fatigue
+                const getAverageFatigue = () => {
+                    const recentExerciseRecords = appState.exerciseRecords
+                        .filter(record => record.completed && record.fatigueLevel)
+                        .slice(0, 5);
+                    
+                    if (recentExerciseRecords.length === 0) return null;
+                    
+                    const totalFatigue = recentExerciseRecords.reduce((sum, record) => sum + (record.fatigueLevel || 0), 0);
+                    return Math.round(totalFatigue / recentExerciseRecords.length * 10) / 10;
+                };
+
+                const currentFatigue = todayExercise?.fatigueLevel || getAverageFatigue();
+
+                const getExerciseRecommendation = (fatigue) => {
+                    if (!fatigue) return "แนะนำ: เริ่มออกกำลังกายเบาๆ";
+                    if (fatigue <= 2) return "แนะนำ: ออกกำลังกาย 5-6 วัน/สัปดาห์";
+                    if (fatigue <= 3) return "แนะนำ: ออกกำลังกาย 4-5 วัน/สัปดาห์";
+                    if (fatigue <= 4) return "แนะนำ: ออกกำลังกาย 2-3 วัน/สัปดาห์";
+                    return "แนะนำ: พักผ่อนเพิ่มเติม ออกกำลังกายเบาๆ 1-2 วัน/สัปดาห์";
+                };
+
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] p-6 flex flex-col">
+                        <!-- Header -->
+                        <div class="flex items-center gap-4 mb-8 pt-8">
+                            <button onclick="setHealthView('main')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                ${Icons.ArrowLeft}
+                            </button>
+                            <h1 class="text-3xl font-semibold text-[#333]">สุขภาพ 30 วันที่ผ่านมา</h1>
+                        </div>
+
+                        <!-- Summary -->
+                        <div class="bg-white rounded-3xl p-6 shadow-lg mb-6">
+                            <h2 class="text-2xl font-semibold text-[#333] mb-4 text-center">สรุปภาพรวม 30 วัน</h2>
+                            <div class="grid grid-cols-1 gap-4">
+                                <div class="text-center p-4 bg-[#fff3e0] rounded-2xl">
+                                    <p class="text-lg text-[#666]">ค่าความเหนื่อยเฉลี่ย</p>
+                                    ${currentFatigue ? `
+                                        <p class="text-3xl font-semibold text-[#ff9800]">${currentFatigue}/5</p>
+                                    ` : `
+                                        <p class="text-xl font-semibold text-[#999]">ไม่มีข้อมูล</p>
+                                    `}
+                                </div>
+                                <div class="text-center p-4 bg-[#e8f5e8] rounded-2xl">
+                                    <p class="text-lg text-[#666]">การออกกำลังกาย</p>
+                                    <p class="text-3xl font-semibold text-[#81c784]">
+                                        ${monthlyData.reduce((sum, week) => sum + week.exerciseDays, 0)} วัน
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <!-- Recommendation -->
+                            <div class="mt-4 p-4 bg-[#f0f8ff] rounded-2xl">
+                                <p class="text-lg font-semibold text-[#4a90e2] text-center">
+                                    ${getExerciseRecommendation(currentFatigue || 3)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Weekly Breakdown -->
+                        <div class="space-y-4">
+                            <h3 class="text-2xl font-semibold text-[#333]">รายละเอียดแต่ละสัปดาห์</h3>
+                            ${monthlyData.map((week, index) => `
+                                <div class="bg-white rounded-3xl p-6 shadow-lg">
+                                    <h4 class="text-xl font-semibold text-[#333] mb-4">${week.week}</h4>
+                                    
+                                    <div class="grid grid-cols-1 gap-3">
+                                        <div class="flex items-center justify-between p-3 bg-[#f8f9fa] rounded-xl">
+                                            <span class="text-lg text-[#666]">ค่าความเหนื่อยเฉลี่ย</span>
+                                            <span class="text-lg font-semibold text-[#333]">${week.avgFatigue.toFixed(1)}/5</span>
+                                        </div>
+                                        <div class="flex items-center justify-between p-3 bg-[#f8f9fa] rounded-xl">
+                                            <span class="text-lg text-[#666]">ออกกำลังกาย</span>
+                                            <span class="text-lg font-semibold text-[#81c784]">${week.exerciseDays} วัน</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            },
+
+            settings: () => {
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <div class="flex-1 p-6 pb-32">
+                            <!-- Header -->
+                            <div class="flex items-center gap-4 mb-6 pt-8">
+                                <button onclick="navigate('home')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                    ${Icons.ArrowLeft}
+                                </button>
+                                <div>
+                                    <h1 class="text-3xl font-semibold text-[#333]">ตั้งค่า</h1>
+                                    <p class="text-lg text-[#666]">จัดการการใช้งาน</p>
+                                </div>
+                            </div>
+
+                            <!-- User Info -->
+                            <div class="bg-white rounded-2xl p-6 shadow-lg mb-6">
+                                <h2 class="text-2xl font-semibold text-[#333] mb-4">ข้อมูลผู้ใช้</h2>
+                                <div class="flex items-center gap-4 mb-4">
+                                    <div class="w-16 h-16 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">
+                                        <span class="text-2xl text-white">👤</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-xl font-semibold text-[#333]">${appState.userInfo.name}</h3>
+                                        <p class="text-lg text-[#666]">${appState.userInfo.phone}</p>
+                                        <p class="text-sm text-[#999]">เข้าร่วมเมื่อ ${appState.userInfo.registrationDate ? new Date(appState.userInfo.registrationDate).toLocaleDateString('th-TH') : 'วันนี้'}</p>
+                                    </div>
+                                </div>
+                                <button onclick="logout()" class="w-full bg-[#ef5350] text-white rounded-2xl py-3 text-lg font-semibold active:scale-95 transition-transform">
+                                    ออกจากระบบ
+                                </button>
+                            </div>
+
+                            <!-- Current Mode -->
+                            <div class="bg-white rounded-2xl p-6 shadow-lg mb-6">
+                                <h2 class="text-2xl font-semibold text-[#333] mb-4">โหมดปัจจุบัน</h2>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-4">
+                                        <div class="w-12 h-12 ${appState.userMode === 'elderly' ? 'bg-[#81c784]' : 'bg-[#ff9800]'} rounded-full flex items-center justify-center">
+                                            <span class="text-2xl">${appState.userMode === 'elderly' ? '👴' : '👨‍👩‍👧‍👦'}</span>
+                                        </div>
+                                        <div>
+                                            <h3 class="text-xl font-semibold text-[#333]">${appState.userMode === 'elderly' ? 'ผู้สูงอายุ' : 'ลูกหลาน'}</h3>
+                                            <p class="text-lg text-[#666]">${appState.userMode === 'elderly' ? 'ใช้งานง่าย ตัวอักษรใหญ่' : 'ดูแลสุขภาพของผู้สูงอายุ'}</p>
+                                        </div>
+                                    </div>
+                                    <button onclick="switchMode()" class="bg-[#4a90e2] text-white rounded-xl py-2 px-4 text-lg font-semibold active:scale-95 transition-transform">
+                                        เปลี่ยน
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Notification Settings -->
+                            <div class="bg-white rounded-2xl p-6 shadow-lg mb-6">
+                                <h2 class="text-2xl font-semibold text-[#333] mb-4">การแจ้งเตือน</h2>
+                                <div class="space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-2xl">🏃</span>
+                                            <div>
+                                                <p class="text-lg font-semibold text-[#333]">เตือนออกกำลังกาย</p>
+                                                <p class="text-sm text-[#666]">แจ้งเตือนเมื่อถึงเวลา</p>
+                                            </div>
+                                        </div>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" ${appState.notificationSettings.exercise ? 'checked' : ''} onchange="toggleNotification('exercise', this.checked)" class="sr-only peer">
+                                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    </div>
+
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-2xl">🏥</span>
+                                            <div>
+                                                <p class="text-lg font-semibold text-[#333]">เตือนตรวจสุขภาพ</p>
+                                                <p class="text-sm text-[#666]">แจ้งเตือนตรวจสุขภาพประจำ</p>
+                                            </div>
+                                        </div>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" ${appState.notificationSettings.checkup ? 'checked' : ''} onchange="toggleNotification('checkup', this.checked)" class="sr-only peer">
+                                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Additional Settings -->
+                            <div class="space-y-4">
+                                <button class="w-full bg-white rounded-2xl p-6 shadow-lg border-2 border-[#e0e0e0] active:scale-95 transition-transform">
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-3xl">🔊</span>
+                                        <div class="text-left">
+                                            <h3 class="text-xl font-semibold text-[#333]">เสียงและการสั่น</h3>
+                                            <p class="text-lg text-[#666]">ปรับระดับเสียงและการสั่น</p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button class="w-full bg-white rounded-2xl p-6 shadow-lg border-2 border-[#e0e0e0] active:scale-95 transition-transform">
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-3xl">🎨</span>
+                                        <div class="text-left">
+                                            <h3 class="text-xl font-semibold text-[#333]">รูปแบบการแสดงผล</h3>
+                                            <p class="text-lg text-[#666]">ปรับขนาดตัวอักษรและสี</p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button onclick="navigate('help')" class="w-full bg-white rounded-2xl p-6 shadow-lg border-2 border-[#e0e0e0] active:scale-95 transition-transform">
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-3xl">❓</span>
+                                        <div class="text-left">
+                                            <h3 class="text-xl font-semibold text-[#333]">ช่วยเหลือ</h3>
+                                            <p class="text-lg text-[#666]">คู่มือการใช้งานและติดต่อ</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                        ${renderBottomNavigation('settings')}
+                    </div>
+                `;
+            },
+
+            help: () => {
+                const isElderly = appState.userMode === 'elderly';
+                
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <div class="flex-1 p-6 pb-32">
+                            <!-- Header -->
+                            <div class="flex items-center gap-4 mb-8 pt-8">
+                                <button onclick="navigate('home')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                    <svg viewBox="0 0 64 64" class="w-6 h-6 text-[#333]">
+                                        <path d="M40 16 L24 32 L40 48" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                                        <path d="M24 32 L50 32" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+                                    </svg>
+                                </button>
+                                <h1 class="${isElderly ? 'text-4xl' : 'text-3xl'} font-semibold text-[#333]">
+                                    ช่วยเหลือ
+                                </h1>
+                            </div>
+
+                            <!-- Welcome Message -->
+                            <div class="bg-white rounded-3xl p-6 shadow-lg mb-6">
+                                <div class="text-center">
+                                    <div class="w-16 h-16 bg-[#4a90e2] rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <span class="text-2xl">🤝</span>
+                                    </div>
+                                    <h2 class="${isElderly ? 'text-3xl' : 'text-2xl'} font-semibold text-[#333] mb-3">
+                                        ${isElderly ? 'เราพร้อมช่วยเหลือคุณ' : 'ศูนย์ช่วยเหลือ'}
+                                    </h2>
+                                    <p class="${isElderly ? 'text-xl' : 'text-lg'} text-[#666] leading-relaxed">
+                                        ${isElderly 
+                                            ? 'หากมีปัญหาการใช้งาน ติดต่อเราได้ตลอดเวลา'
+                                            : 'คำแนะนำและการสนับสนุนสำหรับการดูแลผู้สูงอายุ'
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Help Options -->
+                            <div class="space-y-4">
+                                <button onclick="openManual()" class="w-full bg-white rounded-3xl p-6 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                    <div class="flex items-center gap-6">
+                                        <div class="rounded-full flex items-center justify-center bg-[#81c784]" style="width: ${isElderly ? '64px' : '48px'}; height: ${isElderly ? '64px' : '48px'}">
+                                            <svg viewBox="0 0 64 64" class="text-white ${isElderly ? 'w-8 h-8' : 'w-6 h-6'}">
+                                                <rect x="16" y="12" width="32" height="40" rx="2" fill="currentColor"/>
+                                                <rect x="18" y="14" width="28" height="36" fill="white" rx="1"/>
+                                                <rect x="22" y="20" width="20" height="2" rx="1" fill="currentColor"/>
+                                                <rect x="22" y="26" width="16" height="2" rx="1" fill="currentColor"/>
+                                                <rect x="22" y="32" width="18" height="2" rx="1" fill="currentColor"/>
+                                                <rect x="22" y="38" width="14" height="2" rx="1" fill="currentColor"/>
+                                                <rect x="16" y="12" width="4" height="40" fill="currentColor" opacity="0.8"/>
+                                                <rect x="36" y="12" width="3" height="20" fill="#ff9800"/>
+                                                <path d="M37.5 32 L36 30 L39 30 Z" fill="#ff9800"/>
+                                            </svg>
+                                        </div>
+                                        <div class="text-left flex-1">
+                                            <h3 class="${isElderly ? 'text-2xl' : 'text-xl'} font-semibold text-[#333] mb-1">
+                                                คู่มือการใช้งาน
+                                            </h3>
+                                            <p class="${isElderly ? 'text-lg' : 'text-base'} text-[#666] leading-relaxed">
+                                                ${isElderly ? 'วิธีใช้แอปง่ายๆ แบบทีละขั้นตอน' : 'คู่มือการดูแลผู้สูงอายุ'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button onclick="openSupportChat()" class="w-full bg-white rounded-3xl p-6 shadow-lg border-2 border-[#e0e0e0] hover:border-[#4a90e2] transition-all duration-200 active:scale-95">
+                                    <div class="flex items-center gap-6">
+                                        <div class="rounded-full flex items-center justify-center bg-[#ff9800]" style="width: ${isElderly ? '64px' : '48px'}; height: ${isElderly ? '64px' : '48px'}">
+                                            <svg viewBox="0 0 64 64" class="text-white ${isElderly ? 'w-8 h-8' : 'w-6 h-6'}">
+                                                <path d="M12 16 Q12 12 16 12 L48 12 Q52 12 52 16 L52 32 Q52 36 48 36 L24 36 L16 44 L16 36 Q12 36 12 32 Z" fill="currentColor"/>
+                                                <rect x="20" y="20" width="16" height="3" rx="1.5" fill="white"/>
+                                                <rect x="20" y="26" width="24" height="3" rx="1.5" fill="white"/>
+                                                <circle cx="44" cy="22" r="2" fill="white"/>
+                                                <circle cx="44" cy="28" r="2" fill="white"/>
+                                            </svg>
+                                        </div>
+                                        <div class="text-left flex-1">
+                                            <h3 class="${isElderly ? 'text-2xl' : 'text-xl'} font-semibold text-[#333] mb-1">
+                                                ${isElderly ? 'ติดต่อฝ่ายสนับสนุน' : 'แชทกับทีมสนับสนุน'}
+                                            </h3>
+                                            <p class="${isElderly ? 'text-lg' : 'text-base'} text-[#666] leading-relaxed">
+                                                ${isElderly ? 'ติดต่อทีมช่วยเหลือ 24 ชั่วโมง' : 'แชทแบบเรียลไทม์กับผู้เชี่ยวชาญ'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- Emergency Call -->
+                            <div class="mt-6 bg-[#e8f5e8] border-2 border-[#81c784] rounded-3xl p-6">
+                                <button onclick="callEmergency()" class="w-full flex items-center justify-center gap-4 py-4 active:scale-95 transition-transform">
+                                    <div class="w-12 h-12 bg-[#81c784] rounded-full flex items-center justify-center">
+                                        <svg viewBox="0 0 24 24" class="w-6 h-6 text-white">
+                                            <path d="M22 16.92V19a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h2.09a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9a16 16 0 006 6l.36-.36a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="text-center">
+                                        <p class="${isElderly ? 'text-2xl' : 'text-xl'} font-semibold text-[#81c784]">โทรฉุกเฉิน</p>
+                                        <p class="${isElderly ? 'text-lg' : 'text-base'} text-[#666]">1669</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            ${!isElderly ? `
+                                <!-- FAQ Section -->
+                                <div class="mt-6 bg-white rounded-3xl p-6 shadow-lg">
+                                    <h3 class="text-xl font-semibold text-[#333] mb-4">คำถามที่พบบ่อย</h3>
+                                    <div class="space-y-3">
+                                        <div class="p-4 bg-[#f8f9fa] rounded-2xl">
+                                            <p class="font-semibold text-[#333] mb-2">พ่อแม่ลืมรหัสผ่านแอป</p>
+                                            <p class="text-[#666]">ไปที่หน้าตั้งค่า → รีเซ็ตรหัสผ่าน หรือติดต่อฝ่ายสนับสนุน</p>
+                                        </div>
+                                        <div class="p-4 bg-[#f8f9fa] rounded-2xl">
+                                            <p class="font-semibold text-[#333] mb-2">ข้อมูลสุขภาพไม่อัพเดต</p>
+                                            <p class="text-[#666]">ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต และลองปิดเปิดแอปใหม่</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        ${renderBottomNavigation('help')}
+                    </div>
+                `;
+            },
+
+            healthHistory: () => {
+                const getHealthSummary = () => {
+                    const exerciseDays = appState.exerciseRecords.filter(r => r.completed).length;
+                    const exerciseRecordsWithFatigue = appState.exerciseRecords.filter(r => r.completed && r.fatigueLevel);
+                    
+                    const avgFatigue = exerciseRecordsWithFatigue.length > 0 
+                        ? exerciseRecordsWithFatigue.reduce((acc, r) => acc + (r.fatigueLevel || 0), 0) / exerciseRecordsWithFatigue.length
+                        : null;
+
+                    const weeklyExerciseDays = getWeeklyExerciseCount();
+                    
+                    const thisMonth = new Date();
+                    const thisMonthExerciseRecords = appState.exerciseRecords.filter(r => {
+                        const recordDate = new Date(r.date);
+                        return r.completed && 
+                               recordDate.getMonth() === thisMonth.getMonth() && 
+                               recordDate.getFullYear() === thisMonth.getFullYear();
+                    });
+                    
+                    const totalExerciseMinutes = thisMonthExerciseRecords.reduce((acc, r) => acc + (r.duration || 0), 0);
+
+                    return {
+                        exerciseDays,
+                        weeklyExerciseDays,
+                        avgFatigue: avgFatigue ? avgFatigue.toFixed(1) : null,
+                        totalExerciseMinutes,
+                        totalDays: appState.exerciseRecords.length
+                    };
+                };
+
+                const summary = getHealthSummary();
+
+                return `
+                    <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+                        <div class="flex-1 p-6 pb-32">
+                            <!-- Header -->
+                            <div class="flex items-center gap-4 mb-8 pt-8">
+                                <button onclick="navigate('home')" class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                                    ${Icons.ArrowLeft}
+                                </button>
+                                <h1 class="text-3xl font-semibold text-[#333]">ประวัติสุขภาพ</h1>
+                            </div>
+
+                            <!-- Summary Cards -->
+                            ${appState.exerciseRecords.length > 0 ? `
+                                <div class="bg-[#81c784] text-white rounded-2xl p-4 mb-4 text-center">
+                                    <div class="text-3xl mb-2">🎉</div>
+                                    <h3 class="text-lg font-semibold mb-1">ข้อมูลล่าสุด</h3>
+                                    <p class="text-sm opacity-90">
+                                        พึ่งออกกำลังกาย "${appState.exerciseRecords[0].exerciseType}" เสร็จ
+                                    </p>
+                                    <p class="text-xs opacity-75">
+                                        วันที่ ${new Date(appState.exerciseRecords[0].date).toLocaleDateString('th-TH')}
+                                    </p>
+                                </div>
+                            ` : ''}
+
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="bg-[#81c784] text-white rounded-2xl p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                                        </svg>
+                                        <span class="text-sm font-medium">ออกกำลังกาย</span>
+                                    </div>
+                                    <p class="text-2xl font-bold">${summary.weeklyExerciseDays}/7</p>
+                                    <p class="text-sm opacity-90">วัน/สัปดาห์</p>
+                                    <p class="text-xs opacity-75 mt-1">
+                                        รวม ${summary.exerciseDays} วัน
+                                    </p>
+                                </div>
+
+                                <div class="bg-[#ff9800] text-white rounded-2xl p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-lg">⚡</span>
+                                        <span class="text-sm font-medium">ค่าความเหนื่อยเฉลี่ย</span>
+                                    </div>
+                                    ${summary.avgFatigue ? `
+                                        <p class="text-2xl font-bold">${summary.avgFatigue}/5</p>
+                                        <p class="text-sm opacity-90">จากการออกกำลังกาย</p>
+                                    ` : `
+                                        <p class="text-lg font-bold">-</p>
+                                        <p class="text-sm opacity-90">ไม่ได้ออกกำลังกาย</p>
+                                    `}
+                                </div>
+
+                                <div class="bg-[#4a90e2] text-white rounded-2xl p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        ${Icons.Calendar}
+                                        <span class="text-sm font-medium">นาทีออกกำลังกาย</span>
+                                    </div>
+                                    <p class="text-2xl font-bold">${summary.totalExerciseMinutes}</p>
+                                    <p class="text-sm opacity-90">นาที/เดือน</p>
+                                </div>
+
+                                <div class="bg-[#9c27b0] text-white rounded-2xl p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/>
+                                            <polyline points="17,6 23,6 23,12"/>
+                                        </svg>
+                                        <span class="text-sm font-medium">สุขภาพโดยรวม</span>
+                                    </div>
+                                    <p class="text-2xl font-bold">
+                                        ${summary.weeklyExerciseDays >= 5 ? 'ดีเยี่ยม' : 
+                                          summary.weeklyExerciseDays >= 3 ? 'ดี' : 
+                                          summary.weeklyExerciseDays >= 1 ? 'ปานกลาง' : 'ต้องปรับปรุง'}
+                                    </p>
+                                    <p class="text-sm opacity-90">จากการออกกำลังกาย</p>
+                                </div>
+                            </div>
+
+                            <!-- Export Button -->
+                            <button onclick="exportHealthReport()" class="w-full bg-[#4a90e2] text-white rounded-2xl p-4 flex items-center justify-center gap-3 shadow-lg mb-6 active:scale-95 transition-transform">
+                                <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7,10 12,15 17,10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                <span class="text-lg font-semibold">ส่งออกรายงาน PDF</span>
+                            </button>
+
+                            <!-- Health Records -->
+                            <div class="space-y-4">
+                                <h3 class="text-xl font-semibold text-[#333]">รายละเอียดประจำวัน</h3>
+                                
+                                ${appState.exerciseRecords.length > 0 ? appState.exerciseRecords.map((record, index) => `
+                                    <div class="bg-white rounded-2xl p-5 shadow-lg">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h4 class="text-lg font-semibold text-[#333]">
+                                                ${new Date(record.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', weekday: 'short' })}
+                                            </h4>
+                                            <div class="flex gap-2">
+                                                ${record.completed ? `
+                                                    <div class="w-6 h-6 bg-[#81c784] rounded-full flex items-center justify-center">
+                                                        <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                                                        </svg>
+                                                    </div>
+                                                ` : ''}
+                                                ${record.fatigueLevel ? `
+                                                    <div class="w-6 h-6 bg-[#ff9800] rounded-full flex items-center justify-center">
+                                                        <span class="text-white text-xs">⚡</span>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-1 gap-4 mb-4">
+                                            ${record.completed ? `
+                                                <div class="bg-[#e8f5e8] rounded-xl p-4">
+                                                    <div class="flex items-center gap-2 mb-2">
+                                                        <svg viewBox="0 0 24 24" class="w-4 h-4 text-[#81c784]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                                                        </svg>
+                                                        <p class="text-sm font-medium text-[#81c784]">ออกกำลังกายแล้ว</p>
+                                                    </div>
+                                                    <p class="text-base font-medium text-[#333] mb-2">
+                                                        ${record.exerciseType} เป็นเวลา ${record.duration} นาที
+                                                    </p>
+                                                    ${record.fatigueLevel ? `
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="text-sm text-[#666]">ค่าความเหนื่อย:</span>
+                                                            <span class="text-sm font-medium text-[#333]">
+                                                                ${record.fatigueLevel}/5
+                                                            </span>
+                                                            <span class="text-xs px-2 py-1 rounded-full ${
+                                                                record.fatigueLevel <= 2 ? 'bg-[#81c784] text-white' :
+                                                                record.fatigueLevel <= 3 ? 'bg-[#ff9800] text-white' : 'bg-[#ef5350] text-white'
+                                                            }">
+                                                                ${record.fatigueLevel <= 2 ? 'ดีมาก' :
+                                                                 record.fatigueLevel <= 3 ? 'ปานกลาง' : 'เหนื่อยมาก'}
+                                                            </span>
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                            ` : `
+                                                <div class="bg-[#f5f5f5] rounded-xl p-4">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="w-4 h-4 bg-[#999] rounded-full"></div>
+                                                        <p class="text-base font-medium text-[#999]">
+                                                            ไม่ได้ออกกำลังกาย
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+                                `).join('') : `
+                                    <div class="bg-white rounded-2xl p-8 text-center">
+                                        <div class="text-4xl mb-4">📊</div>
+                                        <h3 class="text-xl font-semibold text-[#333] mb-2">ยังไม่มีข้อมูล</h3>
+                                        <p class="text-lg text-[#666] mb-4">เริ่มออกกำลังกายเพื่อบันทึกข้อมูลสุขภาพ</p>
+                                        <button onclick="navigate('exercise')" class="bg-[#81c784] text-white px-6 py-3 rounded-2xl font-semibold active:scale-95 transition-transform">
+                                            เริ่มออกกำลังกาย
+                                        </button>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        // Helper Functions
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function getWeeklyExerciseCount() {
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            return appState.exerciseRecords.filter(record => {
+                const recordDate = new Date(record.date);
+                return recordDate >= oneWeekAgo && record.completed;
+            }).length;
+        }
+
+        function getExerciseRecommendation(fatigue) {
+            if (!fatigue) return "แนะนำ: เริ่มออกกำลังกายเบาๆ";
+            if (fatigue <= 2) return "แนะนำ: ออกกำลังกาย 5-6 วัน/สัปดาห์";
+            if (fatigue <= 3) return "แนะนำ: ออกกำลังกาย 4-5 วัน/สัปดาห์";
+            if (fatigue <= 4) return "แนะนำ: ออกกำลังกาย 2-3 วัน/สัปดาห์";
+            return "แนะนำ: พักผ่อนเพิ่มเติม ออกกำลังกายเบาๆ 1-2 วัน/สัปดาห์";
+        }
+
+        function renderWeeklyOverview() {
+            const weeklyStats = getWeeklyStats();
+            
+            return `
+                <!-- Weekly Overview -->
+                <div class="border-t pt-4">
+                    <p class="text-sm text-[#666] mb-3">สรุป 7 วันที่ผ่านมา</p>
+                    <div class="grid grid-cols-7 gap-2">
+                        ${weeklyStats.map((stat, index) => `
+                            <div class="text-center">
+                                <p class="text-xs text-[#666] mb-2">${stat.day}</p>
+                                <div class="space-y-2">
+                                    <!-- Exercise status -->
+                                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        stat.exercise ? 'bg-[#81c784] text-white' : 'bg-[#e0e0e0] text-[#999]'
+                                    }">
+                                        ${stat.exercise ? '✓' : '-'}
+                                    </div>
+                                    
+                                    <!-- Fatigue level with clearer display -->
+                                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                        stat.fatigue === null ? 'bg-[#e0e0e0] text-[#999]' :
+                                        stat.fatigue === 1 ? 'bg-[#4caf50] text-white' :
+                                        stat.fatigue === 2 ? 'bg-[#81c784] text-white' :
+                                        stat.fatigue === 3 ? 'bg-[#ff9800] text-white' :
+                                        stat.fatigue === 4 ? 'bg-[#ff5722] text-white' :
+                                        stat.fatigue === 5 ? 'bg-[#f44336] text-white' :
+                                        'bg-[#e0e0e0] text-[#999]'
+                                    }">
+                                        ${stat.fatigue || '-'}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <!-- Legend -->
+                    <div class="mt-4 bg-[#f8f9fa] rounded-xl p-3">
+                        <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <div class="w-4 h-4 bg-[#81c784] rounded-full flex items-center justify-center text-white font-bold text-xs">✓</div>
+                                    <span class="text-[#666]">ออกกำลังกาย</span>
+                                </div>
+                                <div class="text-[#666] font-semibold mb-1">ค่าความเหนื่อย:</div>
+                                <div class="flex items-center gap-1 mb-1">
+                                    <div class="w-3 h-3 bg-[#4caf50] rounded text-white"></div>
+                                    <span class="text-[#666]">1-2 เหนื่อยน้อย</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-1 mb-1">
+                                    <div class="w-3 h-3 bg-[#ff9800] rounded text-white"></div>
+                                    <span class="text-[#666]">3 เหนื่อยปานกลาง</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <div class="w-3 h-3 bg-[#f44336] rounded text-white"></div>
+                                    <span class="text-[#666]">4-5 เหนื่อยมาก</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getWeeklyStats() {
+            const stats = [];
+            const days = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                const dayExerciseRecord = appState.exerciseRecords.find(record => record.date === dateStr && record.completed);
+                stats.push({
+                    day: days[date.getDay()],
+                    exercise: !!dayExerciseRecord,
+                    fatigue: dayExerciseRecord?.fatigueLevel || null
+                });
+            }
+            return stats;
+        }
+
+        // Bottom Navigation
+        function renderBottomNavigation(currentScreen) {
+            const isElderly = appState.userMode === 'elderly';
+            const buttonSize = isElderly ? 'w-16 h-16' : 'w-12 h-12';
+            const iconSize = isElderly ? 'w-8 h-8' : 'w-6 h-6';
+            const textSize = isElderly ? 'text-xl' : 'text-base';
+            const padding = isElderly ? 'p-6' : 'p-4';
+
+            return `
+                <div class="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-[#e0e0e0] shadow-lg z-50 ${padding}">
+                    <div class="max-w-md mx-auto flex justify-around">
+                        <button onclick="navigate('home')" class="flex flex-col items-center gap-2">
+                            <div class="${buttonSize} rounded-full flex items-center justify-center transition-colors ${currentScreen === 'home' ? 'bg-[#4a90e2] text-white' : 'bg-[#f0f0f0] text-[#666]'}">
+                                ${isElderly ? Icons.HomeIconCustom : `<svg viewBox="0 0 24 24" class="${iconSize}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>`}
+                            </div>
+                            <span class="${textSize} font-semibold ${currentScreen === 'home' ? 'text-[#4a90e2]' : 'text-[#666]'}">หน้าหลัก</span>
+                        </button>
+
+                        <button onclick="navigate('settings')" class="flex flex-col items-center gap-2">
+                            <div class="${buttonSize} rounded-full flex items-center justify-center transition-colors ${currentScreen === 'settings' ? 'bg-[#4a90e2] text-white' : 'bg-[#f0f0f0] text-[#666]'}">
+                                ${isElderly ? Icons.SettingsIconCustom : `<svg viewBox="0 0 24 24" class="${iconSize}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}
+                            </div>
+                            <span class="${textSize} font-semibold ${currentScreen === 'settings' ? 'text-[#4a90e2]' : 'text-[#666]'}">ตั้งค่า</span>
+                        </button>
+
+                        <button onclick="navigate('help')" class="flex flex-col items-center gap-2">
+                            <div class="${buttonSize} rounded-full flex items-center justify-center transition-colors ${currentScreen === 'help' ? 'bg-[#4a90e2] text-white' : 'bg-[#f0f0f0] text-[#666]'}">
+                                ${isElderly ? Icons.HelpIconCustom : `<svg viewBox="0 0 24 24" class="${iconSize}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".01"/></svg>`}
+                            </div>
+                            <span class="${textSize} font-semibold ${currentScreen === 'help' ? 'text-[#4a90e2]' : 'text-[#666]'}">ช่วยเหลือ</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Notification Modal
+        function renderNotificationModal() {
+            if (!appState.showNotification) return '';
+
+            const isElderly = appState.userMode === 'elderly';
+            
+            const notifications = {
+                elderly: {
+                    exercise: {
+                        title: 'ถึงเวลาออกกำลังกาย',
+                        message: '5 นาทีครับคุณลุง\\nพร้อมที่จะดูแลสุขภาพกันแล้วหรือยัง?',
+                        icon: 'exercise',
+                        subtitle: 'การออกกำลังกายง่ายๆ บนเก้าอี้',
+                        startText: 'เริ่มเลย',
+                        laterText: 'เลื่อนออกไป 15 นาที'
+                    }
+                },
+                family: {
+                    exercise: {
+                        title: 'แจ้งเตือนการดูแลสุขภาพ',
+                        message: 'คุณพ่อ/คุณแม่ไม่ได้ออกกำลังกาย 3 วันแล้ว\\nควรให้กำลังใจและติดตามท่าน',
+                        icon: 'phone',
+                        subtitle: 'โทรหาหรือส่งข้อความให้กำลังใจ',
+                        startText: 'รับทราบแล้ว',
+                        laterText: 'เตือนฉันทีหลัง'
+                    }
+                }
+            };
+
+            const notif = notifications[appState.userMode][appState.notificationType];
+
+            return `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 sm:p-6 z-50">
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full mx-4 shadow-2xl animate-in slide-in-from-bottom-4 duration-300 max-h-[90vh] overflow-y-auto">
+                        <!-- Header -->
+                        <div class="flex items-center justify-between mb-4 sm:mb-6">
+                            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-[#81c784] rounded-full flex items-center justify-center flex-shrink-0">
+                                ${Icons.Clock}
+                            </div>
+                            <button onclick="closeNotification()" class="min-touch-target w-10 h-10 sm:w-8 sm:h-8 bg-[#e0e0e0] rounded-full flex items-center justify-center flex-shrink-0">
+                                ${Icons.X}
+                            </button>
+                        </div>
+
+                        <!-- Message -->
+                        <div class="text-center mb-6 sm:mb-8">
+                            <h2 class="font-semibold text-[#333] mb-3 sm:mb-4 leading-tight ${isElderly ? 'text-2xl sm:text-3xl' : 'text-xl sm:text-2xl'}">
+                                ${notif.title}
+                            </h2>
+                            <p class="text-[#666] leading-relaxed whitespace-pre-line ${isElderly ? 'text-lg sm:text-xl' : 'text-base sm:text-lg'}">
+                                ${notif.message}
+                            </p>
+                        </div>
+
+                        <!-- Illustration -->
+                        <div class="text-center mb-6 sm:mb-8">
+                            <div class="flex justify-center mb-3 sm:mb-4">
+                                <svg viewBox="0 0 64 64" class="w-12 h-12 text-[#81c784]">
+                                    <circle cx="32" cy="18" r="6" fill="currentColor"/>
+                                    <path d="M32 26 L32 45 M26 32 L38 32 M28 45 L28 52 M36 45 L36 52" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+                                    <circle cx="20" cy="30" r="3" fill="currentColor"/>
+                                    <circle cx="44" cy="30" r="3" fill="currentColor"/>
+                                    <path d="M17 30 L23 30 M41 30 L47 30" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <p class="text-[#666] leading-snug ${isElderly ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}">
+                                ${notif.subtitle}
+                            </p>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="space-y-3 sm:space-y-4">
+                            <button onclick="startNotification()" class="w-full bg-[#81c784] text-white rounded-3xl font-semibold shadow-lg active:scale-95 transition-transform min-touch-target text-center ${
+                                isElderly ? 'py-5 sm:py-6 text-xl sm:text-2xl' : 'py-4 text-lg'
+                            }">
+                                ${notif.startText}
+                            </button>
+                            
+                            <button onclick="remindLater()" class="w-full bg-white text-[#333] border-2 border-[#e0e0e0] rounded-3xl font-semibold shadow-lg active:scale-95 transition-transform min-touch-target text-center ${
+                                isElderly ? 'py-5 sm:py-6 text-xl sm:text-2xl' : 'py-4 text-lg'
+                            }">
+                                ${notif.laterText}
+                            </button>
+                            
+                            <button onclick="closeNotification()" class="w-full bg-gray-100 text-[#666] rounded-3xl font-semibold shadow-lg active:scale-95 transition-transform min-touch-target text-center ${
+                                isElderly ? 'py-4 sm:py-5 text-lg sm:text-xl' : 'py-3 text-base'
+                            }">
+                                ปิดการแจ้งเตือน
+                            </button>
+                        </div>
+
+                        <!-- Encouragement -->
+                        <div class="mt-4 sm:mt-6 text-center">
+                            <p class="text-[#666] ${isElderly ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}">
+                                ${isElderly ? '💪 ทำได้แน่นอน!' : '❤️ ช่วยดูแลสุขภาพพ่อแม่ด้วยกัน'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Exercise Success Notification
+        function renderExerciseSuccess() {
+            if (!appState.showExerciseSuccess) return '';
+
+            return `
+                <div class="fixed top-4 left-4 right-4 z-50 bg-[#81c784] text-white rounded-2xl p-4 shadow-lg slide-in-from-top-4 duration-300">
+                    <div class="text-center">
+                        <div class="w-12 h-12 mx-auto mb-2 bg-white/20 rounded-full flex items-center justify-center">
+                            <svg viewBox="0 0 64 64" class="w-8 h-8 text-white">
+                                <circle cx="32" cy="32" r="28" fill="currentColor"/>
+                                <path d="M20 32 L28 40 L44 24" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                            </svg>
+                        </div>
+                        <p class="text-lg font-semibold">ออกกำลังกายเสร็จเรียบร้อย!</p>
+                        <p class="text-sm opacity-90">บันทึกข้อมูลอัตโนมัติแล้ว</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Event Handlers - Login Functions
+        function updateLoginData(field, value) {
+            appState.loginData[field] = value;
+            render();
+        }
+
+        function generateOTP() {
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        function requestOTP() {
+            if (!appState.loginData.name.trim() || !appState.loginData.phone.trim()) {
+                alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                return;
+            }
+
+            // Validate phone number format (basic)
+            const phoneRegex = /^[0-9-]+$/;
+            if (!phoneRegex.test(appState.loginData.phone)) {
+                alert('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง');
+                return;
+            }
+
+            // Generate and "send" OTP
+            appState.loginData.generatedOTP = generateOTP();
+            appState.loginData.step = 'otp';
+            appState.currentScreen = 'otpVerification';
+            
+            // For demo purposes, show alert with OTP
+            alert(`ส่งรหัส OTP แล้ว!\nรหัส OTP คือ: ${appState.loginData.generatedOTP}\n(ในการใช้งานจริง จะส่งผ่าน SMS)`);
+            
+            render();
+        }
+
+        function verifyOTP() {
+            if (appState.loginData.otp !== appState.loginData.generatedOTP) {
+                alert('รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่');
+                return;
+            }
+
+            // Login successful
+            const userInfo = {
+                name: appState.loginData.name,
+                phone: appState.loginData.phone,
+                registrationDate: new Date().toISOString()
+            };
+
+            appState.userInfo = userInfo;
+            appState.isAuthenticated = true;
+            
+            // Save session
+            saveUserSession(userInfo);
+            
+            // Reset login data
+            appState.loginData = {
+                name: '',
+                phone: '',
+                otp: '',
+                generatedOTP: '',
+                step: 'info'
+            };
+
+            appState.currentScreen = 'userSelection';
+            render();
+        }
+
+        function goBackToLogin() {
+            appState.loginData.step = 'info';
+            appState.loginData.otp = '';
+            appState.loginData.generatedOTP = '';
+            appState.currentScreen = 'login';
+            render();
+        }
+
+        function logout() {
+            if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
+                clearUserSession();
+                appState.exerciseRecords = [];
+                appState.showExerciseSuccess = false;
+                appState.showNotification = false;
+                render();
+            }
+        }
+
+        // Event Handlers - Navigation and App Functions
+        function selectMode(mode) {
+            appState.userMode = mode;
+            appState.currentScreen = 'home';
+            render();
+        }
+
+        function navigate(screen, contactId) {
+            // Reset urgent message when entering chat screen from other screens
+            if (appState.currentScreen !== 'chat' && screen === 'chat') {
+                appState.urgentMessageDismissed = false;
+                appState.showUrgentMessage = true;
+            }
+
+            // Handle individual chat navigation
+            if (screen === 'individualChat' && contactId) {
+                appState.selectedContactId = contactId;
+            }
+
+            // Handle group message navigation
+            if (screen === 'group-message' && contactId) {
+                appState.groupMessage = contactId;
+            }
+
+            appState.currentScreen = screen;
+            render();
+        }
+
+        function switchMode() {
+            const newMode = appState.userMode === 'elderly' ? 'family' : 'elderly';
+            appState.userMode = newMode;
+            appState.currentScreen = 'home';
+            render();
+        }
+
+        function toggleNotification(type, enabled) {
+            appState.notificationSettings[type] = enabled;
+        }
+
+        // Exercise Functions
+        function startExercise(exerciseId) {
+            appState.currentExercise = exerciseId;
+            appState.currentTime = 0;
+            appState.isPlaying = false;
+            appState.isCompleted = false;
+            appState.showFatigueSelection = false;
+            appState.exerciseData = null;
+            appState.currentScreen = 'exerciseSession';
+            render();
+        }
+
+        function toggleExercise() {
+            if (appState.isCompleted) return;
+            
+            appState.isPlaying = !appState.isPlaying;
+            
+            if (appState.isPlaying) {
+                startExerciseTimer();
+            } else {
+                clearInterval(exerciseTimer);
+            }
+            render();
+        }
+
+        function startExerciseTimer() {
+            exerciseTimer = setInterval(() => {
+                const exercise = exercises.find(e => e.id === appState.currentExercise);
+                if (exercise && appState.currentTime + 1 >= exercise.duration) {
+                    // Exercise completed
+                    appState.isPlaying = false;
+                    appState.isCompleted = true;
+                    
+                    // Store exercise data for fatigue level selection
+                    appState.exerciseData = {
+                        exerciseType: exercise.title,
+                        duration: Math.floor(appState.currentTime / 60), // actual time in minutes
+                        difficulty: exercise.difficulty
+                    };
+                    appState.showFatigueSelection = true;
+                    appState.currentScreen = 'fatigueRating';
+                    
+                    clearInterval(exerciseTimer);
+                    render();
+                } else {
+                    appState.currentTime += 1;
+                    render();
+                }
+            }, 1000);
+        }
+
+        function resetExercise() {
+            clearInterval(exerciseTimer);
+            appState.currentTime = 0;
+            appState.isPlaying = false;
+            appState.isCompleted = false;
+            appState.showFatigueSelection = false;
+            appState.exerciseData = null;
+            appState.currentExercise = null;
+            appState.currentScreen = 'exercise';
+            render();
+        }
+
+        function stopEarly() {
+            const exercise = exercises.find(e => e.id === appState.currentExercise);
+            if (exercise && appState.currentTime > 0) {
+                appState.isPlaying = false;
+                appState.isCompleted = true;
+                
+                // Store exercise data for fatigue level selection
+                appState.exerciseData = {
+                    exerciseType: exercise.title,
+                    duration: Math.floor(appState.currentTime / 60), // actual time spent in minutes
+                    difficulty: exercise.difficulty
+                };
+                appState.showFatigueSelection = true;
+                appState.currentScreen = 'fatigueRating';
+                
+                clearInterval(exerciseTimer);
+                render();
+            }
+        }
+
+        function selectFatigue(fatigueLevel) {
+            if (appState.exerciseData) {
+                // Save exercise record
+                const newRecord = {
+                    id: Date.now().toString(),
+                    date: new Date().toISOString().split('T')[0],
+                    exerciseType: appState.exerciseData.exerciseType,
+                    duration: appState.exerciseData.duration,
+                    completed: true,
+                    difficulty: appState.exerciseData.difficulty,
+                    fatigueLevel: fatigueLevel
+                };
+
+                appState.exerciseRecords.unshift(newRecord); // Add to beginning of array
+                appState.showExerciseSuccess = true;
+
+                // Reset exercise state
+                appState.showFatigueSelection = false;
+                appState.currentTime = 0;
+                appState.isPlaying = false;
+                appState.isCompleted = false;
+                appState.exerciseData = null;
+                appState.currentExercise = null;
+
+                // Navigate back to home and hide success message after 3 seconds
+                appState.currentScreen = 'home';
+                setTimeout(() => {
+                    appState.showExerciseSuccess = false;
+                    render();
+                }, 3000);
+                
+                render();
+            }
+        }
+
+        // Notification handlers
+        function showNotificationDemo() {
+            appState.notificationType = 'exercise';
+            appState.showNotification = true;
+            render();
+        }
+
+        function closeNotification() {
+            appState.showNotification = false;
+            render();
+        }
+
+        function startNotification() {
+            appState.showNotification = false;
+            if (appState.userMode === 'elderly') {
+                navigate('exercise');
+            }
+        }
+
+        function remindLater() {
+            appState.showNotification = false;
+            render();
+        }
+
+        // Contact handlers
+        function makeCall(contactId) {
+            const contact = familyMembers.find(m => m.id === contactId);
+            alert(`กำลังโทรหา ${contact?.name}...\n${contact?.phone}`);
+        }
+
+        function makeVideoCall(contactId) {
+            const contact = familyMembers.find(m => m.id === contactId);
+            alert(`กำลังเริ่มวิดีโอคอลกับ ${contact?.name}...`);
+        }
+
+        // Health view handlers
+        function setHealthView(view) {
+            appState.healthView = view;
+            render();
+        }
+
+        // Chat functions
+        function startIndividualChat(contactId) {
+            appState.selectedContactId = contactId;
+            appState.currentScreen = 'individualChat';
+            render();
+        }
+
+        function startGroupChat() {
+            appState.currentScreen = 'groupChat';
+            render();
+        }
+
+        // Message functions
+        function sendQuickMessage(message) {
+            alert(`ส่งข้อความ: "${message}"`);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            if (input && input.value.trim()) {
+                alert(`ส่งข้อความ: "${input.value}"`);
+                input.value = '';
+            }
+        }
+
+        function sendGroupMessage() {
+            const message = prompt('กรอกข้อความที่จะส่งให้ทุกคน:');
+            if (message && message.trim()) {
+                alert(`ส่งข้อความให้ทุกคน: "${message}"`);
+            }
+        }
+
+        function handleEnterKey(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Help functions
+        function openManual() {
+            alert('เปิดคู่มือการใช้งาน\n\n• วิธีการออกกำลังกาย\n• การบันทึกสุขภาพ\n• การติดต่อครอบครัว\n• การตั้งค่าการแจ้งเตือน');
+        }
+
+        function openSupportChat() {
+            alert('เปิดแชทกับทีมสนับสนุน\n\nทีมงานพร้อมให้ความช่วยเหลือตลอด 24 ชั่วโมง');
+        }
+
+        function callEmergency() {
+            if (confirm('โทรหมายเลขฉุกเฉิน 1669?')) {
+                alert('กำลังโทรหา 1669...\nโปรดรอสักครู่');
+            }
+        }
+
+        function exportHealthReport() {
+            alert('กำลังเตรียมรายงานสุขภาพ PDF...\n\nรายงานจะรวมข้อมูล:\n• การออกกำลังกาย\n• ระดับความเหนื่อย\n• แนวโน้มสุขภาพ\n• คำแนะนำ');
+        }
+
+        // Main render function
+        function render() {
+            const container = document.getElementById('screen-container');
+            let screenContent = '';
+            
+            // Check authentication first
+            if (!appState.isAuthenticated) {
+                // Render login screens
+                switch (appState.currentScreen) {
+                    case 'otpVerification':
+                        screenContent = Screens.otpVerification();
+                        break;
+                    default:
+                        screenContent = Screens.login();
+                        break;
+                }
+            } else {
+                // Render authenticated screens
+                switch (appState.currentScreen) {
+                    case 'userSelection':
+                        screenContent = Screens.userSelection();
+                        break;
+                    case 'exercise':
+                        screenContent = Screens.exercise();
+                        break;
+                    case 'exerciseSession':
+                        screenContent = Screens.exerciseSession(appState.currentExercise);
+                        break;
+                    case 'fatigueRating':
+                        screenContent = Screens.fatigueRating();
+                        break;
+                    case 'health':
+                        if (appState.healthView === 'week') {
+                            screenContent = Screens.healthWeek();
+                        } else if (appState.healthView === 'month') {
+                            screenContent = Screens.healthMonth();
+                        } else {
+                            screenContent = Screens.health();
+                        }
+                        break;
+                    case 'family':
+                        screenContent = Screens.family();
+                        break;
+                    case 'individualChat':
+                        screenContent = Screens.individualChat(appState.selectedContactId);
+                        break;
+                    case 'groupChat':
+                        screenContent = Screens.groupChat();
+                        break;
+                    case 'settings':
+                        screenContent = Screens.settings();
+                        break;
+                    case 'help':
+                        screenContent = Screens.help();
+                        break;
+                    case 'healthHistory':
+                        screenContent = Screens.healthHistory();
+                        break;
+                    default:
+                        screenContent = Screens.home();
+                        break;
+                }
+            }
+
+            container.innerHTML = screenContent;
+
+            // Add notification modal if needed
+            if (appState.showNotification) {
+                container.innerHTML += renderNotificationModal();
+            }
+
+            // Add exercise success notification if needed
+            if (appState.showExerciseSuccess) {
+                container.innerHTML += renderExerciseSuccess();
+            }
+        }
+
+        // Auto-show notifications for demo
+        function startNotificationTimer() {
+            if (!appState.isAuthenticated || appState.currentScreen === 'userSelection' || appState.currentScreen === 'login') return;
+
+            setTimeout(() => {
+                if (appState.userMode === 'elderly') {
+                    if (appState.notificationSettings.exercise && appState.currentScreen === 'home') {
+                        appState.notificationType = 'exercise';
+                        appState.showNotification = true;
+                        render();
+                    }
+                } else {
+                    if (appState.notificationSettings.exercise && appState.currentScreen === 'home') {
+                        appState.notificationType = 'exercise';
+                        appState.showNotification = true;
+                        render();
+                    }
+                }
+            }, 15000); // Show after 15 seconds
+        }
+
+        // Initialize app
+        function init() {
+            // Check for saved session first
+            if (!checkSavedSession()) {
+                appState.currentScreen = 'login';
+            }
+            
+            render();
+            startNotificationTimer();
+        }
+
+        // Start the app when DOM is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
