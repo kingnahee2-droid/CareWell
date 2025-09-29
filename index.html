@@ -2692,6 +2692,27 @@
 
         function exportHealthReport() {
             alert('กำลังเตรียมรายงานสุขภาพ PDF...\n\nรายงานจะรวมข้อมูล:\n• การออกกำลังกาย\n• ระดับความเหนื่อย\n• แนวโน้มสุขภาพ\n• คำแนะนำ');
+        // Support chat functions
+        function callSupport() {
+            alert('กำลังโทรหาทีมสนับสนุน...');
+        }
+
+        function sendSupportMessage(message) {
+            const input = document.getElementById('supportMessageInput');
+            const messageText = message || (input ? input.value.trim() : '');
+            
+            if (messageText) {
+                alert(`ส่งข้อความถึงทีมสนับสนุน: "${messageText}"`);
+                if (input) input.value = '';
+            }
+        }
+
+        function handleSupportEnterKey(event) {
+            if (event.key === 'Enter') {
+                sendSupportMessage();
+            }
+        }
+
         }
 
         // Main render function
