@@ -355,6 +355,47 @@ app.get('/api/exercise/summary/month', requireAuth, (req, res) => {
   });
 });
 
+// Family: fetch elderly contacts' exercise summaries
+app.get('/api/family/exercises', requireAuth, (req, res) => {
+  if (req.session.user.role !== 'family') return res.status(403).json({ error: 'forbidden' });
+  const familyId = req.session.user.id;
+  const elderlySql = `SELECT u.id, u.first_name, u.last_name, u.phone FROM contacts c JOIN users u ON u.id = c.contact_user_id WHERE c.user_id = ? AND u.role = 'elderly' ORDER BY u.first_name ASC`;
+  db.all(elderlySql, [familyId], (err, elderlyRows) => {
+    if (err) return res.status(500).json({ error: 'db_error' });
+    if (!elderlyRows || elderlyRows.length === 0) return res.json({ summaries: [] });
+
+    const since = new Date();
+    since.setDate(since.getDate() - 6);
+    const sinceStr = since.toISOString().split('T')[0];
+
+    const summaries = [];
+    let remaining = elderlyRows.length;
+
+    elderlyRows.forEach((erow) => {
+      const latestSql = `SELECT * FROM exercises WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1`;
+      db.get(latestSql, [erow.id], (lErr, latest) => {
+        const weekSql = `SELECT COUNT(*) as cnt FROM exercises WHERE user_id = ? AND date >= ?`;
+        db.get(weekSql, [erow.id, sinceStr], (wErr, wRow) => {
+          summaries.push({
+            elderlyId: erow.id,
+            firstName: erow.first_name,
+            lastName: erow.last_name,
+            phone: erow.phone,
+            weeklyCount: wRow ? wRow.cnt : 0,
+            latest: latest || null
+          });
+          remaining -= 1;
+          if (remaining === 0) {
+            // sort by name
+            summaries.sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
+            res.json({ summaries });
+          }
+        });
+      });
+    });
+  });
+});
+
 // Settings
 app.get('/api/settings', requireAuth, (req, res) => {
   const userId = req.session.user.id;

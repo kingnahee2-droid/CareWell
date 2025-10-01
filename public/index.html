@@ -10,6 +10,9 @@
     body { font-family: 'Nunito', 'Sarabun', 'Noto Sans Thai', system-ui, -apple-system, sans-serif; }
     * { box-sizing: border-box; }
     .hidden { display: none !important; }
+    .emoji-lg { font-size: 2rem; line-height: 1; }
+    .emoji-xl { font-size: 2.5rem; line-height: 1; }
+    .emoji-xxl { font-size: 3rem; line-height: 1; }
   </style>
 </head>
 <body>
@@ -40,7 +43,8 @@
     todayExercise: null,
     supportMessages: [],
     settings: null,
-    notificationTargets: []
+    notificationTargets: [],
+    familyExerciseSummaries: []
   };
 
   function connectSocket() {
@@ -56,7 +60,10 @@
       if (state.user.role === 'elderly') alert('ถึงเวลาออกกำลังกายแล้วค่ะ');
     });
     socket.on('exercise:completed', (payload) => {
-      if (state.user.role === 'family') alert('คุณพ่อออกกำลังกายแล้ว: ' + (payload.exerciseType || ''));
+      if (state.user.role === 'family') {
+        refreshFamilyExercisesIfNeeded(true);
+        alert('คุณพ่อออกกำลังกายแล้ว: ' + (payload.exerciseType || ''));
+      }
     });
   }
 
@@ -66,7 +73,7 @@
       state.user = me.user;
       state.currentScreen = 'home';
       connectSocket();
-      await Promise.all([refreshContacts(), loadSettings(), refreshExercise()]);
+      await Promise.all([refreshContacts(), loadSettings(), refreshExercise(), refreshFamilyExercisesIfNeeded()]);
     } else {
       state.currentScreen = 'login';
     }
@@ -107,7 +114,7 @@
     return `
       <div class="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e8f5e8] to-[#fff3e0] p-6 flex flex-col">
         <div class="text-center mt-12 mb-8">
-          <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+          <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center"><span class="emoji-xl">💖</span></div>
           <h1 class="text-4xl font-bold text-[#333]">Family Care</h1>
           <p class="text-lg text-[#666]">แอปสุขภาพสำหรับครอบครัว</p>
         </div>
@@ -152,14 +159,14 @@
       <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
         <div class="flex-1 p-6 pb-32">
           <div class="text-center mb-8 pt-8">
-            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center"><span class="emoji-xl">💖</span></div>
             <h1 class="text-3xl font-semibold text-[#333]">Family Care</h1>
             <p class="text-lg text-[#666]">แอปสุขภาพสำหรับผู้สูงอายุ</p>
           </div>
           <div class="flex flex-col gap-4 max-w-md mx-auto">
-            <button onclick="navigate('exercise')" class="bg-white rounded-3xl p-6 shadow border">🏋️‍♀️ ออกกำลังกาย</button>
-            <button onclick="navigate('health')" class="bg-white rounded-3xl p-6 shadow border">📋 บันทึกสุขภาพ</button>
-            <button onclick="navigate('family')" class="bg-white rounded-3xl p-6 shadow border">💬 ติดต่อครอบครัว</button>
+            <button onclick="navigate('exercise')" class="bg-white rounded-3xl p-6 shadow border"><span class="emoji-xl">🏋️‍♀️</span> ออกกำลังกาย</button>
+            <button onclick="navigate('health')" class="bg-white rounded-3xl p-6 shadow border"><span class="emoji-xl">📋</span> บันทึกสุขภาพ</button>
+            <button onclick="navigate('family')" class="bg-white rounded-3xl p-6 shadow border"><span class="emoji-xl">💬</span> ติดต่อครอบครัว</button>
           </div>
         </div>
         ${bottomNav('home')}
@@ -169,7 +176,7 @@
       <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
         <div class="flex-1 p-4 pb-32">
           <div class="text-center mb-6 pt-8">
-            <div class="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+            <div class="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center"><span class="emoji-xl">💖</span></div>
             <h1 class="text-2xl font-semibold text-[#333]">Family Care</h1>
             <p class="text-lg text-[#666]">ดูแลสุขภาพคุณพ่อ/คุณแม่</p>
           </div>
@@ -180,12 +187,12 @@
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="text-center">
-                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${state.todayExercise ? 'bg-[#81c784] text-white':'bg-[#ffb74d] text-white'}">🏃‍♀️</div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${state.todayExercise ? 'bg-[#81c784] text-white':'bg-[#ffb74d] text-white'}"><span class="emoji-lg">🏃‍♀️</span></div>
                 <p class="text-sm text-[#666]">ออกกำลังกายวันนี้</p>
                 <p class="text-xs font-semibold ${state.todayExercise ? 'text-[#81c784]':'text-[#ffb74d]'}">${state.todayExercise ? 'ทำแล้ว' : 'ยังไม่ทำ'}</p>
               </div>
               <div class="text-center">
-                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 bg-[#ff9800] text-white">😴</div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 bg-[#ff9800] text-white"><span class="emoji-lg">😴</span></div>
                 <p class="text-sm text-[#666]">ค่าความเหนื่อย</p>
                 <p class="text-xs font-semibold ${state.todayExercise && state.todayExercise.fatigue_level ? 'text-[#ff9800]' : 'text-[#999]'}">${state.todayExercise && state.todayExercise.fatigue_level ? state.todayExercise.fatigue_level + '/5' : '-'}</p>
               </div>
@@ -195,8 +202,8 @@
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <button onclick="navigate('contact-list')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2">💬<span class="text-sm font-semibold">เลือกคนแชท</span></button>
-            <button onclick="navigate('health')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2">📅<span class="text-sm font-semibold">ดูประวัติสุขภาพ</span></button>
+            <button onclick="navigate('family')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2"><span class="emoji-lg">💬</span><span class="text-sm font-semibold">เลือกคนแชท</span></button>
+            <button onclick="navigate('health')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2"><span class="emoji-lg">📅</span><span class="text-sm font-semibold">ดูประวัติสุขภาพ</span></button>
           </div>
         </div>
         ${bottomNav('home')}
@@ -215,7 +222,7 @@
           <div class="bg-white rounded-2xl p-6 shadow mb-6">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
-                <div class="w-12 h-12 ${isElderly?'bg-[#81c784]':'bg-[#ff9800]'} rounded-full flex items-center justify-center">${isElderly?'👴':'👨‍👩‍👧‍👦'}</div>
+                <div class="w-12 h-12 ${isElderly?'bg-[#81c784]':'bg-[#ff9800]'} rounded-full flex items-center justify-center"><span class="emoji-lg">${isElderly?'👴':'👨‍👩‍👧‍👦'}</span></div>
                 <div>
                   <div class="text-xl font-semibold text-[#333]">${isElderly ? 'ผู้สูงอายุ' : 'ลูกหลาน'}</div>
                   <div class="text-sm text-[#666]">${state.user.firstName} ${state.user.lastName} • ${state.user.phone}</div>
@@ -255,7 +262,7 @@
           </div>`}
 
           <div class="space-y-4">
-            <button onclick="navigate('help')" class="w-full bg-white rounded-2xl p-6 shadow border">❓ ช่วยเหลือ</button>
+            <button onclick="navigate('help')" class="w-full bg-white rounded-2xl p-6 shadow border"><span class="emoji-lg">❓</span> ช่วยเหลือ</button>
           </div>
         </div>
         ${bottomNav('settings')}
@@ -268,8 +275,8 @@
         <div class="flex-1 p-6 pb-32">
           ${header('ช่วยเหลือ', 'home')}
           <div class="space-y-4">
-            <button onclick="navigate('manual')" class="w-full bg-white rounded-2xl p-6 shadow border">📖 คู่มือการใช้งาน</button>
-            <button onclick="navigate('support')" class="w-full bg-white rounded-2xl p-6 shadow border">💬 ติดต่อฝ่ายสนับสนุน</button>
+            <button onclick="navigate('manual')" class="w-full bg-white rounded-2xl p-6 shadow border"><span class="emoji-lg">📖</span> คู่มือการใช้งาน</button>
+            <button onclick="navigate('support')" class="w-full bg-white rounded-2xl p-6 shadow border"><span class="emoji-lg">💬</span> ติดต่อฝ่ายสนับสนุน</button>
           </div>
         </div>
         ${bottomNav('help')}
@@ -341,7 +348,7 @@
   }
 
   function familyScreen() {
-    // chat list with add friend
+    // chat list with add friend + elderly exercise table
     return `
       <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
         <div class="flex-1 pb-24">
@@ -358,10 +365,41 @@
             </div>
           </div>
           <div class="p-4">
+            ${state.user && state.user.role==='family' ? `
+            <div class="bg-white rounded-2xl p-4 shadow mb-4">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-semibold text-[#333]">สรุปการออกกำลังกายของผู้สูงอายุ</h2>
+                <button onclick=\"refreshFamilyExercisesIfNeeded(true)\" class="text-sm text-[#4a90e2]">รีเฟรช</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[#666]">
+                      <th class="py-2 pr-4">ชื่อ</th>
+                      <th class="py-2 pr-4">ล่าสุด</th>
+                      <th class="py-2 pr-4">ระยะเวลา</th>
+                      <th class="py-2 pr-4">เหนื่อย</th>
+                      <th class="py-2 pr-4">7 วัน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${state.familyExerciseSummaries.map(s => `
+                      <tr class="border-t">
+                        <td class="py-2 pr-4">${s.firstName} ${s.lastName}</td>
+                        <td class="py-2 pr-4">${s.latest ? s.latest.date : '-'}</td>
+                        <td class="py-2 pr-4">${s.latest ? (s.latest.duration_min + ' นาที') : '-'}</td>
+                        <td class="py-2 pr-4">${s.latest && s.latest.fatigue_level ? (s.latest.fatigue_level + '/5') : '-'}</td>
+                        <td class="py-2 pr-4">${s.weeklyCount} วัน</td>
+                      </tr>`).join('')}
+                    ${state.familyExerciseSummaries.length===0 ? '<tr><td colspan="5" class="py-3 text-center text-[#999]">ยังไม่มีข้อมูล</td></tr>':''}
+                  </tbody>
+                </table>
+              </div>
+            </div>` : ''}
             <div class="space-y-2">
               ${state.contacts.map(m => `
                 <button onclick="startIndividualChat(${m.id})" class="w-full bg-white rounded-2xl p-4 shadow flex items-center gap-4">
-                  <div class="w-12 h-12 rounded-full flex items-center justify-center ${m.online ? 'bg-[#81c784]' : 'bg-gray-300]'}">${m.role==='elderly'?'👴':'👨‍👩‍👧‍👦'}</div>
+                  <div class="w-12 h-12 rounded-full flex items-center justify-center ${m.online ? 'bg-[#81c784]' : 'bg-gray-300]'}"><span class="emoji-lg">${m.role==='elderly'?'👴':'👨‍👩‍👧‍👦'}</span></div>
                   <div class="text-left flex-1 min-w-0">
                     <div class="flex items-center justify-between mb-1">
                       <h3 class="text-xl font-semibold text-[#333] truncate">${m.firstName}</h3>
@@ -372,7 +410,7 @@
                 </button>`).join('')}
             </div>
             <div class="mt-6">
-              <button onclick="startGroupChat()" class="w-full bg-[#ff9800] text-white py-4 rounded-2xl font-semibold">แชทกลุ่มครอบครัว</button>
+            <button onclick="startGroupChat()" class="w-full bg-[#ff9800] text-white py-4 rounded-2xl font-semibold"><span class="emoji-lg">👨‍👩‍👧‍👦</span> แชทกลุ่มครอบครัว</button>
             </div>
           </div>
         </div>
@@ -437,10 +475,10 @@
         ${header('ออกกำลังกาย', 'home')}
         <div class="bg-white rounded-3xl p-6 shadow">
           <div class="space-y-4">
-            <button onclick="completeExercise('ออกกำลังกายบนเก้าอี้',5,2)" class="w-full bg-white rounded-2xl p-4 border">🪑 เก้าอี้ • 5 นาที</button>
-            <button onclick="completeExercise('ท่ายืน',10,3)" class="w-full bg-white rounded-2xl p-4 border">🧍 ท่ายืน • 10 นาที</button>
-            <button onclick="completeExercise('การยืดคลายเส้น',5,2)" class="w-full bg-white rounded-2xl p-4 border">🧘 ยืดเส้น • 5 นาที</button>
-            <button onclick="completeExercise('ทดสอบ 10 วินาที',0,1)" class="w-full bg-white rounded-2xl p-4 border">⏱️ ทดสอบ</button>
+            <button onclick="completeExercise('ออกกำลังกายบนเก้าอี้',5,2)" class="w-full bg-white rounded-2xl p-4 border"><span class="emoji-lg">🪑</span> เก้าอี้ • 5 นาที</button>
+            <button onclick="completeExercise('ท่ายืน',10,3)" class="w-full bg-white rounded-2xl p-4 border"><span class="emoji-lg">🧍</span> ท่ายืน • 10 นาที</button>
+            <button onclick="completeExercise('การยืดคลายเส้น',5,2)" class="w-full bg-white rounded-2xl p-4 border"><span class="emoji-lg">🧘</span> ยืดเส้น • 5 นาที</button>
+            <button onclick="completeExercise('ทดสอบ 10 วินาที',0,1)" class="w-full bg-white rounded-2xl p-4 border"><span class="emoji-lg">⏱️</span> ทดสอบ</button>
           </div>
         </div>
       </div>`;
@@ -519,15 +557,6 @@
       </div>`;
   }
 
-  // Navigation
-  function navigate(screen) {
-    state.currentScreen = screen;
-    render();
-    if (screen === 'family') refreshContacts();
-    if (screen === 'support') loadSupport();
-    if (screen === 'health') refreshExercise();
-  }
-
   // API actions
   async function requestOTP() {
     const firstName = document.getElementById('firstName').value.trim();
@@ -553,7 +582,7 @@
       state.currentScreen = 'home';
       state.pendingOTP = false;
       connectSocket();
-      await Promise.all([refreshContacts(), loadSettings(), refreshExercise()]);
+      await Promise.all([refreshContacts(), loadSettings(), refreshExercise(), refreshFamilyExercisesIfNeeded()]);
       render();
     } else alert('รหัสไม่ถูกต้อง');
   }
@@ -577,6 +606,7 @@
     const res = await api.post('/api/contacts/add', { phone });
     if (!res.ok) return alert('เพิ่มเพื่อนไม่สำเร็จ');
     refreshContacts();
+    refreshFamilyExercisesIfNeeded(true);
   }
 
   async function startIndividualChat(id) {
@@ -626,6 +656,15 @@
     state.monthlyRecords = month.records || [];
   }
 
+  async function refreshFamilyExercisesIfNeeded(force) {
+    if (!state.user || state.user.role !== 'family') return;
+    try {
+      const res = await api.get('/api/family/exercises');
+      state.familyExerciseSummaries = res.summaries || [];
+      if (force && state.currentScreen === 'family') render();
+    } catch (_) {}
+  }
+
   async function completeExercise(exerciseType, durationMin, fatigueLevel) {
     if (state.user.role !== 'elderly') return alert('ใช้ได้ในโหมดผู้สูงอายุ');
     await api.post('/api/exercise', { exerciseType, duration: durationMin, fatigueLevel });
@@ -665,6 +704,14 @@
     await api.post('/api/support', { content });
     await loadSupport();
     input.value = '';
+  }
+
+  function navigate(screen) {
+    state.currentScreen = screen;
+    render();
+    if (screen === 'family') { refreshContacts(); refreshFamilyExercisesIfNeeded(true); }
+    if (screen === 'support') loadSupport();
+    if (screen === 'health') refreshExercise();
   }
 
   function render() {
