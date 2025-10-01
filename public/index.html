@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Family Care - แอปสุขภาพสำหรับผู้สูงอายุ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Nunito', 'Sarabun', 'Noto Sans Thai', system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app" class="min-h-screen bg-[#f0f8ff]">
+    <div class="w-full max-w-md mx-auto bg-white min-h-screen relative">
+      <div id="screen-container" class="w-full h-full overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  const api = {
+    get: (path) => fetch(path, { credentials: 'include' }).then(r => r.json()),
+    post: (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body || {}) }).then(r => r.json())
+  };
+
+  let socket = null;
+
+  let state = {
+    currentScreen: 'login',
+    user: null,
+    contacts: [],
+    selectedContactId: null,
+    otpPhone: '',
+    pendingOTP: false,
+    weeklyRecords: [],
+    monthlyRecords: [],
+    todayExercise: null,
+    supportMessages: [],
+    settings: null,
+    notificationTargets: []
+  };
+
+  function connectSocket() {
+    if (!state.user) return;
+    socket = io({ auth: { userId: state.user.id, role: state.user.role } });
+    socket.on('presence:update', () => refreshContacts());
+    socket.on('message:new', (msg) => {
+      if (state.currentScreen === 'individualChat' && (msg.fromUserId === state.selectedContactId || msg.toUserId === state.selectedContactId)) {
+        loadMessages(state.selectedContactId, true);
+      }
+    });
+    socket.on('exercise:reminder', () => {
+      if (state.user.role === 'elderly') alert('ถึงเวลาออกกำลังกายแล้วค่ะ');
+    });
+    socket.on('exercise:completed', (payload) => {
+      if (state.user.role === 'family') alert('คุณพ่อออกกำลังกายแล้ว: ' + (payload.exerciseType || ''));
+    });
+  }
+
+  async function bootstrap() {
+    const me = await api.get('/api/auth/me');
+    if (me.user) {
+      state.user = me.user;
+      state.currentScreen = 'home';
+      connectSocket();
+      await Promise.all([refreshContacts(), loadSettings(), refreshExercise()]);
+    } else {
+      state.currentScreen = 'login';
+    }
+    render();
+  }
+
+  function bottomNav(active) {
+    const isElderly = state.user && state.user.role === 'elderly';
+    const textSize = isElderly ? 'text-xl' : 'text-base';
+    return `
+      <div class="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-[#e0e0e0] shadow-lg z-50 p-4">
+        <div class="max-w-md mx-auto flex justify-around">
+          <button onclick="navigate('home')" class="flex flex-col items-center gap-2">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center ${active==='home'?'bg-[#4a90e2] text-white':'bg-[#f0f0f0] text-[#666]'}">🏠</div>
+            <span class="${textSize} ${active==='home'?'text-[#4a90e2] font-semibold':'text-[#666]'}">หน้าหลัก</span>
+          </button>
+          <button onclick="navigate('settings')" class="flex flex-col items-center gap-2">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center ${active==='settings'?'bg-[#4a90e2] text-white':'bg-[#f0f0f0] text-[#666]'}">⚙️</div>
+            <span class="${textSize} ${active==='settings'?'text-[#4a90e2] font-semibold':'text-[#666]'}">ตั้งค่า</span>
+          </button>
+          <button onclick="navigate('help')" class="flex flex-col items-center gap-2">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center ${active==='help'?'bg-[#4a90e2] text-white':'bg-[#f0f0f0] text-[#666]'}">❓</div>
+            <span class="${textSize} ${active==='help'?'text-[#4a90e2] font-semibold':'text-[#666]'}">ช่วยเหลือ</span>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function header(title, backTo) {
+    return `
+      <div class="flex items-center gap-4 mb-6 pt-8">
+        ${backTo ? `<button onclick=\"navigate('${backTo}')\" class=\"w-12 h-12 bg-white rounded-full flex items-center justify-center shadow\">⬅️</button>`: ''}
+        <h1 class="text-3xl font-semibold text-[#333]">${title}</h1>
+      </div>`;
+  }
+
+  function loginScreen() {
+    return `
+      <div class="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e8f5e8] to-[#fff3e0] p-6 flex flex-col">
+        <div class="text-center mt-12 mb-8">
+          <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+          <h1 class="text-4xl font-bold text-[#333]">Family Care</h1>
+          <p class="text-lg text-[#666]">แอปสุขภาพสำหรับครอบครัว</p>
+        </div>
+        <div class="bg-white rounded-3xl p-6 shadow-lg max-w-md w-full mx-auto">
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm text-[#666] mb-1">ชื่อ</label>
+              <input id="firstName" class="w-full border rounded-xl p-3" placeholder="ชื่อ" />
+            </div>
+            <div>
+              <label class="block text-sm text-[#666] mb-1">นามสกุล</label>
+              <input id="lastName" class="w-full border rounded-xl p-3" placeholder="นามสกุล" />
+            </div>
+            <div>
+              <label class="block text-sm text-[#666] mb-1">เบอร์โทร</label>
+              <input id="phone" class="w-full border rounded-xl p-3" placeholder="เช่น 0812345678" />
+            </div>
+            <div>
+              <label class="block text-sm text-[#666] mb-1">บทบาท</label>
+              <select id="role" class="w-full border rounded-xl p-3">
+                <option value="elderly">ผู้สูงอายุ</option>
+                <option value="family">ลูกหลาน</option>
+              </select>
+            </div>
+            <button onclick="requestOTP()" class="w-full bg-[#4a90e2] text-white rounded-2xl p-3 font-semibold">ขอรหัส OTP</button>
+          </div>
+
+          ${state.pendingOTP ? `
+          <div class="mt-6 border-t pt-4">
+            <label class="block text-sm text-[#666] mb-1">รหัส OTP</label>
+            <input id="otpCode" class="w-full border rounded-xl p-3" placeholder="6 หลัก" />
+            <button onclick="verifyOTP()" class="w-full mt-3 bg-[#81c784] text-white rounded-2xl p-3 font-semibold">ยืนยัน</button>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function homeScreen() {
+    if (!state.user) return '';
+    if (state.user.role === 'elderly') {
+      return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 p-6 pb-32">
+          <div class="text-center mb-8 pt-8">
+            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+            <h1 class="text-3xl font-semibold text-[#333]">Family Care</h1>
+            <p class="text-lg text-[#666]">แอปสุขภาพสำหรับผู้สูงอายุ</p>
+          </div>
+          <div class="flex flex-col gap-4 max-w-md mx-auto">
+            <button onclick="navigate('exercise')" class="bg-white rounded-3xl p-6 shadow border">🏋️‍♀️ ออกกำลังกาย</button>
+            <button onclick="navigate('health')" class="bg-white rounded-3xl p-6 shadow border">📋 บันทึกสุขภาพ</button>
+            <button onclick="navigate('family')" class="bg-white rounded-3xl p-6 shadow border">💬 ติดต่อครอบครัว</button>
+          </div>
+        </div>
+        ${bottomNav('home')}
+      </div>`;
+    } else {
+      return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 p-4 pb-32">
+          <div class="text-center mb-6 pt-8">
+            <div class="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-[#4a90e2] to-[#81c784] rounded-full flex items-center justify-center">💖</div>
+            <h1 class="text-2xl font-semibold text-[#333]">Family Care</h1>
+            <p class="text-lg text-[#666]">ดูแลสุขภาพคุณพ่อ/คุณแม่</p>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="text-xl font-semibold text-[#333]">สุขภาพวันนี้</h2>
+              <span class="text-sm text-[#666]">${state.todayExercise ? 'เพิ่งออกกำลังกาย' : 'ยังไม่ทำ'}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="text-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${state.todayExercise ? 'bg-[#81c784] text-white':'bg-[#ffb74d] text-white'}">🏃‍♀️</div>
+                <p class="text-sm text-[#666]">ออกกำลังกายวันนี้</p>
+                <p class="text-xs font-semibold ${state.todayExercise ? 'text-[#81c784]':'text-[#ffb74d]'}">${state.todayExercise ? 'ทำแล้ว' : 'ยังไม่ทำ'}</p>
+              </div>
+              <div class="text-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 bg-[#ff9800] text-white">😴</div>
+                <p class="text-sm text-[#666]">ค่าความเหนื่อย</p>
+                <p class="text-xs font-semibold ${state.todayExercise && state.todayExercise.fatigue_level ? 'text-[#ff9800]' : 'text-[#999]'}">${state.todayExercise && state.todayExercise.fatigue_level ? state.todayExercise.fatigue_level + '/5' : '-'}</p>
+              </div>
+            </div>
+            <div class="mt-3">
+              <button onclick="navigate('notification-management')" class="w-full bg-[#4a90e2] text-white rounded-2xl p-3">แจ้งเตือนคุณพ่อ</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="navigate('contact-list')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2">💬<span class="text-sm font-semibold">เลือกคนแชท</span></button>
+            <button onclick="navigate('health')" class="bg-white border rounded-2xl p-4 flex flex-col items-center gap-2">📅<span class="text-sm font-semibold">ดูประวัติสุขภาพ</span></button>
+          </div>
+        </div>
+        ${bottomNav('home')}
+      </div>`;
+    }
+  }
+
+  function settingsScreen() {
+    if (!state.user) return '';
+    const s = state.settings || {};
+    const isElderly = state.user.role === 'elderly';
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 p-6 pb-32">
+          ${header('ตั้งค่า', 'home')}
+          <div class="bg-white rounded-2xl p-6 shadow mb-6">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 ${isElderly?'bg-[#81c784]':'bg-[#ff9800]'} rounded-full flex items-center justify-center">${isElderly?'👴':'👨‍👩‍👧‍👦'}</div>
+                <div>
+                  <div class="text-xl font-semibold text-[#333]">${isElderly ? 'ผู้สูงอายุ' : 'ลูกหลาน'}</div>
+                  <div class="text-sm text-[#666]">${state.user.firstName} ${state.user.lastName} • ${state.user.phone}</div>
+                </div>
+              </div>
+              <button onclick="logout()" class="bg-red-500 text-white rounded-xl py-2 px-4 text-sm font-semibold">ออกจากระบบ</button>
+            </div>
+          </div>
+
+          ${isElderly ? `
+          <div class="bg-white rounded-2xl p-6 shadow mb-6">
+            <h2 class="text-xl font-semibold mb-4">การแจ้งเตือน (โหมดผู้สูงอายุ)</h2>
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="font-semibold">เตือนออกกำลังกาย</div>
+                <div class="text-sm text-[#666]">แจ้งเตือนเมื่อถึงเวลา</div>
+              </div>
+              <input type="checkbox" ${s.elderly_notify_exercise===1?'checked':''} onchange="updateSetting('elderly_notify_exercise', this.checked)" />
+            </div>
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-semibold">เตือนตรวจสุขภาพ</div>
+                <div class="text-sm text-[#666]">แจ้งเตือนตรวจสุขภาพประจำ</div>
+              </div>
+              <input type="checkbox" ${s.elderly_notify_checkup===1?'checked':''} onchange="updateSetting('elderly_notify_checkup', this.checked)" />
+            </div>
+          </div>` : `
+          <div class="bg-white rounded-2xl p-6 shadow mb-6">
+            <h2 class="text-xl font-semibold mb-4">การแจ้งเตือน (โหมดลูกหลาน)</h2>
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-semibold">แจ้งเตือนว่าคุณพ่อออกกำลังกายแล้ว</div>
+                <div class="text-sm text-[#666]">รับการแจ้งเตือนเมื่อผู้สูงอายุเสร็จการออกกำลังกาย</div>
+              </div>
+              <input type="checkbox" ${s.family_notify_parent_done===1?'checked':''} onchange="updateSetting('family_notify_parent_done', this.checked)" />
+            </div>
+          </div>`}
+
+          <div class="space-y-4">
+            <button onclick="navigate('help')" class="w-full bg-white rounded-2xl p-6 shadow border">❓ ช่วยเหลือ</button>
+          </div>
+        </div>
+        ${bottomNav('settings')}
+      </div>`;
+  }
+
+  function helpScreen() {
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 p-6 pb-32">
+          ${header('ช่วยเหลือ', 'home')}
+          <div class="space-y-4">
+            <button onclick="navigate('manual')" class="w-full bg-white rounded-2xl p-6 shadow border">📖 คู่มือการใช้งาน</button>
+            <button onclick="navigate('support')" class="w-full bg-white rounded-2xl p-6 shadow border">💬 ติดต่อฝ่ายสนับสนุน</button>
+          </div>
+        </div>
+        ${bottomNav('help')}
+      </div>`;
+  }
+
+  function manualScreen() {
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('คู่มือการใช้งาน', 'help')}
+        <div class="bg-white rounded-2xl p-6 shadow space-y-4">
+          <div>
+            <div class="font-semibold text-lg mb-1">เริ่มต้นใช้งาน</div>
+            <ul class="list-disc pl-6 text-[#555]">
+              <li>เข้าสู่ระบบด้วยชื่อ นามสกุล และเบอร์โทร</li>
+              <li>ยืนยันด้วยรหัส OTP</li>
+              <li>เลือกโหมด ผู้สูงอายุ หรือ ลูกหลาน</li>
+            </ul>
+          </div>
+          <div>
+            <div class="font-semibold text-lg mb-1">เพิ่มเพื่อนด้วยเบอร์โทร</div>
+            <ul class="list-disc pl-6 text-[#555]">
+              <li>ไปที่แชทครอบครัว → เพิ่มเพื่อน</li>
+              <li>กรอกเบอร์ที่สมัครไว้ ระบบจะค้นหาและเพิ่มอัตโนมัติ</li>
+            </ul>
+          </div>
+          <div>
+            <div class="font-semibold text-lg mb-1">การออกกำลังกายและบันทึกสุขภาพ</div>
+            <ul class="list-disc pl-6 text-[#555]">
+              <li>โหมดผู้สูงอายุ: เริ่มออกกำลังกายและเลือกความเหนื่อย ระบบจะบันทึก</li>
+              <li>ดูข้อมูลย้อนหลัง 7 และ 30 วันได้ในบันทึกสุขภาพ</li>
+            </ul>
+          </div>
+          <div>
+            <div class="font-semibold text-lg mb-1">ปัญหาที่พบบ่อย</div>
+            <div class="space-y-2">
+              <details class="bg-[#f8f9fa] p-3 rounded">
+                <summary class="font-semibold cursor-pointer">ลืมรหัสผ่าน</summary>
+                <div class="text-[#555] mt-2">เข้าสู่ระบบด้วยเบอร์โทรและยืนยัน OTP ใหม่</div>
+              </details>
+              <details class="bg-[#f8f9fa] p-3 rounded">
+                <summary class="font-semibold cursor-pointer">ข้อมูลไม่อัปเดต</summary>
+                <div class="text-[#555] mt-2">ตรวจการเชื่อมต่อและลองโหลดหน้าใหม่</div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function supportScreen() {
+    const msgs = state.supportMessages || [];
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 p-6">
+          ${header('ฝ่ายสนับสนุน', 'help')}
+          <div class="bg-white rounded-2xl p-4 shadow h-[60vh] overflow-y-auto mb-3" id="supportBox">
+            ${msgs.map(m => `
+              <div class="mb-2 ${m.isBot ? 'text-left' : 'text-right'}">
+                <div class="inline-block px-3 py-2 rounded ${m.isBot ? 'bg-[#f0f0f0] text-[#333]' : 'bg-[#4a90e2] text-white'}">${m.content}</div>
+              </div>`).join('')}
+          </div>
+          <div class="flex gap-2">
+            <input id="supportInput" class="flex-1 border rounded-xl p-3" placeholder="พิมพ์ข้อความ..." />
+            <button onclick="sendSupport()" class="bg-[#4a90e2] text-white rounded-xl px-4">ส่ง</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function familyScreen() {
+    // chat list with add friend
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="flex-1 pb-24">
+          <div class="bg-white p-4 shadow sticky top-0 z-10">
+            <div class="flex items-center gap-4">
+              <button onclick="navigate('home')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">⬅️</button>
+              <div>
+                <h1 class="text-2xl font-semibold text-[#333]">แชทครอบครัว</h1>
+                <p class="text-base text-[#666]">เลือกคนที่จะแชท</p>
+              </div>
+              <div class="ml-auto">
+                <button onclick="promptAddFriend()" class="bg-[#4a90e2] text-white rounded-xl px-3 py-2 text-sm">เพิ่มเพื่อน</button>
+              </div>
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="space-y-2">
+              ${state.contacts.map(m => `
+                <button onclick="startIndividualChat(${m.id})" class="w-full bg-white rounded-2xl p-4 shadow flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-full flex items-center justify-center ${m.online ? 'bg-[#81c784]' : 'bg-gray-300]'}">${m.role==='elderly'?'👴':'👨‍👩‍👧‍👦'}</div>
+                  <div class="text-left flex-1 min-w-0">
+                    <div class="flex items-center justify-between mb-1">
+                      <h3 class="text-xl font-semibold text-[#333] truncate">${m.firstName}</h3>
+                      <span class="text-sm text-[#999] ml-2">${m.online?'ออนไลน์':'ออฟไลน์'}</span>
+                    </div>
+                    <p class="text-sm text-[#666] truncate">${m.phone}</p>
+                  </div>
+                </button>`).join('')}
+            </div>
+            <div class="mt-6">
+              <button onclick="startGroupChat()" class="w-full bg-[#ff9800] text-white py-4 rounded-2xl font-semibold">แชทกลุ่มครอบครัว</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  let cachedMessages = [];
+  function individualChatScreen() {
+    const contact = state.contacts.find(c => c.id === state.selectedContactId);
+    const messages = cachedMessages;
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="bg-white p-4 shadow sticky top-0 z-10">
+          <div class="flex items-center gap-4">
+            <button onclick="navigate('family')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">⬅️</button>
+            <div class="flex-1">
+              <div class="text-xl font-semibold text-[#333]">${contact ? contact.firstName : ''}</div>
+              <div class="text-sm text-[#666]">${contact ? contact.phone : ''}</div>
+            </div>
+          </div>
+        </div>
+        <div class="flex-1 p-4 overflow-y-auto" id="chatBox">
+          ${messages.map(m => `
+            <div class="mb-2 ${m.fromUserId===state.user.id ? 'text-right' : 'text-left'}">
+              <div class="inline-block px-3 py-2 rounded ${m.fromUserId===state.user.id ? 'bg-[#4a90e2] text-white' : 'bg-white text-[#333] border'}">${m.content}</div>
+            </div>`).join('')}
+        </div>
+        <div class="p-4 bg-white border-t">
+          <div class="flex gap-2">
+            <input id="chatInput" class="flex-1 border rounded-xl p-3" placeholder="พิมพ์ข้อความ..." onkeypress="if(event.key==='Enter'){sendMessage()}" />
+            <button onclick="sendMessage()" class="bg-[#4a90e2] text-white rounded-xl px-4">ส่ง</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function groupChatScreen() {
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] flex flex-col">
+        <div class="bg-white p-4 shadow sticky top-0 z-10">
+          <div class="flex items-center gap-4">
+            <button onclick="navigate('family')" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">⬅️</button>
+            <div class="text-2xl font-semibold text-[#333]">แชทกลุ่มครอบครัว</div>
+          </div>
+        </div>
+        <div class="flex-1 p-4 overflow-y-auto" id="chatBox">
+          <div class="text-center text-[#666]">ส่งข้อความถึงเพื่อนทั้งหมดของคุณ</div>
+        </div>
+        <div class="p-4 bg-white border-t">
+          <div class="flex gap-2">
+            <input id="chatInput" class="flex-1 border rounded-xl p-3" placeholder="พิมพ์ข้อความ..." onkeypress="if(event.key==='Enter'){sendGroupMessage()}" />
+            <button onclick="sendGroupMessage()" class="bg-[#ff9800] text-white rounded-xl px-4">ส่ง</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Exercise and Health Screens (simplified but functional)
+  function exerciseScreen() {
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('ออกกำลังกาย', 'home')}
+        <div class="bg-white rounded-3xl p-6 shadow">
+          <div class="space-y-4">
+            <button onclick="completeExercise('ออกกำลังกายบนเก้าอี้',5,2)" class="w-full bg-white rounded-2xl p-4 border">🪑 เก้าอี้ • 5 นาที</button>
+            <button onclick="completeExercise('ท่ายืน',10,3)" class="w-full bg-white rounded-2xl p-4 border">🧍 ท่ายืน • 10 นาที</button>
+            <button onclick="completeExercise('การยืดคลายเส้น',5,2)" class="w-full bg-white rounded-2xl p-4 border">🧘 ยืดเส้น • 5 นาที</button>
+            <button onclick="completeExercise('ทดสอบ 10 วินาที',0,1)" class="w-full bg-white rounded-2xl p-4 border">⏱️ ทดสอบ</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function healthScreen() {
+    const weeklyCount = (state.weeklyRecords || []).length;
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('บันทึกสุขภาพ', 'home')}
+        <div class="bg-white rounded-3xl p-6 shadow mb-4">
+          <div class="text-lg font-semibold mb-2">สุขภาพวันนี้</div>
+          ${state.todayExercise ? `
+          <div class="bg-[#e8f5e8] rounded-xl p-4">ออกกำลังกายแล้ว • ${state.todayExercise.exercise_type} • ${state.todayExercise.duration_min} นาที</div>` : `
+          <div class="bg-[#fff3e0] rounded-xl p-4 border border-[#ffb74d]">ยังไม่ได้ออกกำลังกาย</div>`}
+        </div>
+        <div class="space-y-3">
+          <button onclick="navigate('healthWeek')" class="w-full bg-[#4a90e2] text-white rounded-3xl p-4">ดูข้อมูล 7 วันที่ผ่านมา</button>
+          <button onclick="navigate('healthMonth')" class="w-full bg-white border rounded-3xl p-4">ดูข้อมูล 30 วันที่ผ่านมา</button>
+        </div>
+      </div>`;
+  }
+
+  function healthWeekScreen() {
+    const list = state.weeklyRecords || [];
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('สุขภาพ 7 วันที่ผ่านมา', 'health')}
+        <div class="space-y-3">
+          ${list.map(r => `
+            <div class="bg-white rounded-2xl p-4 shadow">
+              <div class="font-semibold">${r.date}</div>
+              <div class="text-sm text-[#555]">${r.exercise_type} • ${r.duration_min} นาที ${r.fatigue_level? '• เหนื่อย ' + r.fatigue_level + '/5' : ''}</div>
+            </div>`).join('')}
+          ${list.length===0 ? '<div class="text-center text-[#666]">ยังไม่มีข้อมูล</div>':''}
+        </div>
+      </div>`;
+  }
+
+  function healthMonthScreen() {
+    const list = state.monthlyRecords || [];
+    const totalDays = list.length;
+    const avgFatigue = list.filter(r=>r.fatigue_level).map(r=>r.fatigue_level).reduce((a,b)=>a+b,0) / (list.filter(r=>r.fatigue_level).length || 1);
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('สุขภาพ 30 วันที่ผ่านมา', 'health')}
+        <div class="bg-white rounded-2xl p-4 shadow mb-4">
+          <div>จำนวนวันที่ออกกำลังกาย: <b>${totalDays}</b></div>
+          <div>ค่าความเหนื่อยเฉลี่ย: <b>${isNaN(avgFatigue)?'-':avgFatigue.toFixed(1)}/5</b></div>
+        </div>
+        <div class="space-y-3">
+          ${list.map(r => `
+            <div class="bg-white rounded-2xl p-4 shadow">
+              <div class="font-semibold">${r.date}</div>
+              <div class="text-sm text-[#555]">${r.exercise_type} • ${r.duration_min} นาที ${r.fatigue_level? '• เหนื่อย ' + r.fatigue_level + '/5' : ''}</div>
+            </div>`).join('')}
+          ${list.length===0 ? '<div class="text-center text-[#666]">ยังไม่มีข้อมูล</div>':''}
+        </div>
+      </div>`;
+  }
+
+  // Notification management (family only)
+  function notificationManagementScreen() {
+    const targets = state.contacts.filter(c => c.role === 'elderly');
+    return `
+      <div class="min-h-screen bg-[#f0f8ff] p-6">
+        ${header('แจ้งเตือนคุณพ่อ', 'home')}
+        <div class="space-y-3">
+          ${targets.map(t => `
+            <button onclick="notifyParent(${t.id})" class="w-full bg-white border rounded-2xl p-4 flex items-center justify-between">
+              <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-[#81c784] text-white flex items-center justify-center">👴</div><div>${t.firstName} ${t.lastName}</div></div>
+              <div class="text-[#4a90e2]">ส่งแจ้งเตือน</div>
+            </button>`).join('')}
+          ${targets.length===0 ? '<div class="text-center text-[#666]">ยังไม่มีผู้สูงอายุในรายชื่อเพื่อน</div>':''}
+        </div>
+      </div>`;
+  }
+
+  // Navigation
+  function navigate(screen) {
+    state.currentScreen = screen;
+    render();
+    if (screen === 'family') refreshContacts();
+    if (screen === 'support') loadSupport();
+    if (screen === 'health') refreshExercise();
+  }
+
+  // API actions
+  async function requestOTP() {
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const role = document.getElementById('role').value;
+    if (!firstName || !lastName || !phone) return alert('กรอกข้อมูลให้ครบ');
+    const res = await api.post('/api/auth/request-otp', { firstName, lastName, phone, role });
+    if (res.ok) {
+      state.pendingOTP = true;
+      state.otpPhone = phone;
+      render();
+      if (res.devCode) alert('รหัสสำหรับทดสอบ: ' + res.devCode);
+    } else alert('ขอรหัสไม่สำเร็จ');
+  }
+
+  async function verifyOTP() {
+    const code = (document.getElementById('otpCode').value || '').trim();
+    if (!code) return alert('กรอกรหัส OTP');
+    const res = await api.post('/api/auth/verify-otp', { phone: state.otpPhone, code });
+    if (res.ok) {
+      state.user = res.user;
+      state.currentScreen = 'home';
+      state.pendingOTP = false;
+      connectSocket();
+      await Promise.all([refreshContacts(), loadSettings(), refreshExercise()]);
+      render();
+    } else alert('รหัสไม่ถูกต้อง');
+  }
+
+  async function logout() {
+    await api.post('/api/auth/logout');
+    state = { currentScreen: 'login', user: null, contacts: [] };
+    if (socket) try { socket.disconnect(); } catch(e) {}
+    render();
+  }
+
+  async function refreshContacts() {
+    const res = await api.get('/api/contacts');
+    state.contacts = res.contacts || [];
+    if (state.currentScreen === 'family') render();
+  }
+
+  async function promptAddFriend() {
+    const phone = prompt('กรอกเบอร์โทรของเพื่อน');
+    if (!phone) return;
+    const res = await api.post('/api/contacts/add', { phone });
+    if (!res.ok) return alert('เพิ่มเพื่อนไม่สำเร็จ');
+    refreshContacts();
+  }
+
+  async function startIndividualChat(id) {
+    state.selectedContactId = id;
+    await loadMessages(id, false);
+    state.currentScreen = 'individualChat';
+    render();
+  }
+
+  async function loadMessages(contactId, silent) {
+    const res = await api.get('/api/messages/' + contactId);
+    cachedMessages = res.messages || [];
+    if (!silent) render();
+    setTimeout(() => { const el = document.getElementById('chatBox'); if (el) el.scrollTop = el.scrollHeight; }, 0);
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input || !input.value.trim()) return;
+    const content = input.value.trim();
+    await api.post('/api/messages', { toUserId: state.selectedContactId, content });
+    input.value = '';
+    await loadMessages(state.selectedContactId, false);
+  }
+
+  function startGroupChat() {
+    state.currentScreen = 'groupChat';
+    render();
+  }
+
+  async function sendGroupMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input || !input.value.trim()) return;
+    const content = input.value.trim();
+    await api.post('/api/messages', { content, isGroup: true });
+    input.value = '';
+  }
+
+  async function refreshExercise() {
+    const [today, week, month] = await Promise.all([
+      api.get('/api/exercise/today'),
+      api.get('/api/exercise/summary/week'),
+      api.get('/api/exercise/summary/month')
+    ]);
+    state.todayExercise = today.record || null;
+    state.weeklyRecords = week.records || [];
+    state.monthlyRecords = month.records || [];
+  }
+
+  async function completeExercise(exerciseType, durationMin, fatigueLevel) {
+    if (state.user.role !== 'elderly') return alert('ใช้ได้ในโหมดผู้สูงอายุ');
+    await api.post('/api/exercise', { exerciseType, duration: durationMin, fatigueLevel });
+    await refreshExercise();
+    alert('บันทึกแล้ว');
+  }
+
+  async function loadSettings() {
+    const res = await api.get('/api/settings');
+    state.settings = res.settings || {};
+  }
+
+  async function updateSetting(key, checked) {
+    const s = Object.assign({}, state.settings || {});
+    s[key] = checked ? 1 : 0;
+    await api.post('/api/settings', s);
+    await loadSettings();
+    render();
+  }
+
+  async function notifyParent(elderlyUserId) {
+    const res = await api.post('/api/notify/parent', { elderlyUserId });
+    if (res.ok) alert('ส่งแจ้งเตือนแล้ว');
+  }
+
+  async function loadSupport() {
+    const res = await api.get('/api/support');
+    state.supportMessages = res.messages || [];
+    render();
+    setTimeout(() => { const el = document.getElementById('supportBox'); if (el) el.scrollTop = el.scrollHeight; }, 0);
+  }
+
+  async function sendSupport() {
+    const input = document.getElementById('supportInput');
+    if (!input || !input.value.trim()) return;
+    const content = input.value.trim();
+    await api.post('/api/support', { content });
+    await loadSupport();
+    input.value = '';
+  }
+
+  function render() {
+    const c = document.getElementById('screen-container');
+    let html = '';
+    switch (state.currentScreen) {
+      case 'login': html = loginScreen(); break;
+      case 'home': html = homeScreen(); break;
+      case 'settings': html = settingsScreen(); break;
+      case 'help': html = helpScreen(); break;
+      case 'manual': html = manualScreen(); break;
+      case 'support': html = supportScreen(); break;
+      case 'family': html = familyScreen(); break;
+      case 'individualChat': html = individualChatScreen(); break;
+      case 'groupChat': html = groupChatScreen(); break;
+      case 'exercise': html = exerciseScreen(); break;
+      case 'health': html = healthScreen(); break;
+      case 'healthWeek': html = healthWeekScreen(); break;
+      case 'healthMonth': html = healthMonthScreen(); break;
+      case 'notification-management': html = notificationManagementScreen(); break;
+      default: html = homeScreen();
+    }
+    c.innerHTML = html;
+  }
+
+  window.navigate = navigate;
+  window.requestOTP = requestOTP;
+  window.verifyOTP = verifyOTP;
+  window.logout = logout;
+  window.promptAddFriend = promptAddFriend;
+  window.startIndividualChat = startIndividualChat;
+  window.startGroupChat = startGroupChat;
+  window.sendMessage = sendMessage;
+  window.sendGroupMessage = sendGroupMessage;
+  window.completeExercise = completeExercise;
+  window.notifyParent = notifyParent;
+  window.updateSetting = updateSetting;
+  window.sendSupport = sendSupport;
+
+  bootstrap();
+  </script>
+</body>
+</html>
+
